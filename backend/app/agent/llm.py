@@ -126,6 +126,9 @@ class OpenAICompatLLM:
                     raise LLMError(f"HTTP {r.status_code} from {self.model_id}: {r.text[:200]}", r.status_code)
                 time.sleep(min(2 ** attempt, 5))
                 continue
+            if r.status_code == 400 and "response_format" in body and "json_validate_failed" in r.text:
+                body.pop("response_format")   # strict JSON mode rejected the output: retry once, loop parser is tolerant
+                continue
             raise LLMError(f"HTTP {r.status_code} from {self.model_id}: {r.text[:300]}", r.status_code)
         raise LLMError("unreachable")
 

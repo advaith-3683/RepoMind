@@ -251,3 +251,29 @@ def test_embedder_disk_cache_survives_restart(tmp_path):
     off._embed = fake_embed
     off.embed_query("where is login")
     assert calls["n"] == 2                                  # cache disabled => real call
+
+
+def test_json_validate_failed_retries_once_without_json_mode():
+    bodies = []
+
+    def handler(req):
+        bodies.append(json.loads(req.content))
+        if len(bodies) == 1:
+            return httpx.Response(400, json={"error": {"code": "json_validate_failed", "message": "Failed to validate JSON"}})
+        return ok("not strict json {\"action\":\"final_answer\",\"args\":{}}")
+
+    res = make(handler).complete("s", [])
+    assert "response_format" in bodies[0] and "response_format" not in bodies[1]
+    assert len(bodies) == 2 and res.text.startswith("not strict")
+
+
+def test_other_400_still_not_retried():
+    n = {"c": 0}
+
+    def handler(req):
+        n["c"] += 1
+        return httpx.Response(400, text="bad request")
+
+    with pytest.raises(LLMError):
+        make(handler).complete("s", [])
+    assert n["c"] == 1
