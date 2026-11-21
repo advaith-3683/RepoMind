@@ -17,7 +17,7 @@ FastAPI validation failures (bad UUID, wrong types) return `422` with FastAPI's 
 | 400 | `invalid_repo_url`, `empty_query`, `query_too_long`, `invalid_query`, `prompt_injection`, `path_blocked`, `not_a_file`, `file_too_large`, `binary_file`, `bad_range`, `invalid_decision`, `invalid_proposal` |
 | 401 | `unauthorized` |
 | 400 (also) | `missing_github_token` (publish without `X-GitHub-Token`) |
-| 403 | `github_no_permission` (no write access / repo or file not found for this user), `github_auth` (GitHub rejected the token: sign in again) |
+| 403 | `forbidden` (not the owner of that repo), `github_no_permission` (no write access / repo or file not found for this user), `github_auth` (GitHub rejected the token: sign in again) |
 | 404 | `not_found` |
 | 409 | `repo_not_ready`, `invalid_transition`, `publish_not_ready` (approve first), `publish_in_progress`, `github_conflict` (file changed on GitHub / edit no longer applies / nothing to change) |
 | 429 | `rate_limited` (per user; provider quota problems surface as an SSE `error`/`needs_clarification`, not HTTP 429), `index_quota_exceeded` (new repos per user per day) |
@@ -47,6 +47,9 @@ Repo object:
   "files_indexed":0, "chunks_indexed":0, "created_at":"iso", "indexed_at":null }
 ```
 Show `error` when `status == "failed"`. Only `ready` repos can be queried.
+
+### `DELETE /repos/{id}` → `204` (no body)
+Removes the repo, its chunks, its question history and its files. Only the user who added it may (`403 forbidden` otherwise); `409 repo_not_ready` while it is being indexed (retry shortly); `404` if unknown. The UI must ask for confirmation first and, if the removed repo was selected, clear the selection and any answer shown for it.
 
 ### `GET /repos/{id}/file?path=app/auth.py&start=3&end=40` → `200`
 Citation preview. Sandboxed + secret-redacted. Max 200 lines per call.

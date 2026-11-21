@@ -21,6 +21,25 @@ SKIP_DIRS = {
 }
 SKIP_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "Cargo.lock", "go.sum"}
 BATCH = 50
+MAX_EMBED_CHARS = 6000   # keep one input well under the 2048-token model limit
+
+
+def est_tokens(text: str) -> int:
+    return len(text) // 3 + 1   # deliberately pessimistic for code
+
+
+def make_batches(texts: list[str], max_items: int, max_tokens: int) -> list[tuple[int, int, int]]:
+    """Group texts into (start, end, est_tokens) slices bounded by item count AND estimated tokens."""
+    out, start, tokens = [], 0, 0
+    for i, t in enumerate(texts):
+        n = est_tokens(t)
+        if i > start and (i - start >= max_items or tokens + n > max_tokens):
+            out.append((start, i, tokens))
+            start, tokens = i, 0
+        tokens += n
+    if texts:
+        out.append((start, len(texts), tokens))
+    return out
 
 
 def iter_repo_files(root: Path, max_file_kb: int):
@@ -87,12 +106,15 @@ def _ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
 
         embedder = embedder or GeminiEmbedder(s)
         store.delete_chunks(repo_id)
-        size = max(1, s.embed_batch_size)
-        for i in range(0, len(chunks), size):
-            if i and s.embed_batch_delay_s > 0:
-                time.sleep(s.embed_batch_delay_s)
-            batch = chunks[i:i + size]
-            store.insert_chunks(repo_id, batch, embedder.embed_documents([c.embed_text() for c in batch]))
+        texts = [c.embed_text()[:MAX_EMBED_CHARS] for c in chunks]
+        prev_tokens = 0
+        for a, b, tokens in make_batches(texts, max(1, s.embed_batch_size), max(1, s.embed_batch_tokens)):
+            if prev_tokens:
+                pause = max(s.embed_batch_delay_s, prev_tokens * 60 / max(1, s.embed_tpm_budget))
+                if pause > 0:
+                    time.sleep(pause)
+            store.insert_chunks(repo_id, chunks[a:b], embedder.embed_documents(texts[a:b]))
+            prev_tokens = tokens
 
         store.update_repo(
             repo_id, status="ready", files_indexed=files, chunks_indexed=len(chunks),

@@ -56,6 +56,12 @@ def list_repos() -> list[dict]:
         return c.execute("SELECT * FROM repos ORDER BY created_at DESC LIMIT 100").fetchall()
 
 
+def delete_repo(repo_id) -> bool:
+    """Delete a repo; chunks, queries, traces and actions go with it (ON DELETE CASCADE)."""
+    with get_conn() as c:
+        return c.execute("DELETE FROM repos WHERE id = %s RETURNING id", (repo_id,)).fetchone() is not None
+
+
 def update_repo(repo_id, **fields) -> None:
     bad = set(fields) - _REPO_COLS
     if bad:

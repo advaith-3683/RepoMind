@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     database_url: str = ""                            # Supabase Postgres connection string
     embed_batch_size: int = 25                        # chunks per Gemini embedding call (smaller = gentler on free-tier quota)
     embed_batch_delay_s: float = 1.0                  # pause between embedding calls
+    embed_batch_tokens: int = 8000                    # est. tokens per embedding call (one call above the TPM limit can NEVER succeed)
+    embed_tpm_budget: int = 20000                     # pace calls so est. tokens/minute stays under this (free tier limit is 30K)
 
     # --- answering LLM (any OpenAI-compatible API; Groq by default) ---
     llm_provider: str = "openai_compat"               # "openai_compat" | "gemini"

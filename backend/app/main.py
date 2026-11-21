@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import store
@@ -20,7 +20,7 @@ from .guardrails.input import validate_query
 from .ingestion.clone import parse_github_url
 from .ingestion.pipeline import ingest_repo
 from .publish import publish_action
-from .repositories import repository_snapshot
+from .repositories import _remove_owned, repository_lock, repository_snapshot
 from .schemas import AskRequest, DecisionRequest, FeedbackRequest, RepoCreate
 
 settings = get_settings()
@@ -34,7 +34,7 @@ _STATUS_BY_CODE = {
     "unauthorized": 401,
     "auth_not_configured": 503, "auth_unavailable": 503,
     "rate_limited": 429, "index_quota_exceeded": 429,
-    "not_found": 404,
+    "not_found": 404, "forbidden": 403,
     "invalid_transition": 409, "repo_not_ready": 409, "publish_not_ready": 409,
     "publish_in_progress": 409, "github_conflict": 409,
     "github_no_permission": 403, "github_auth": 403,
@@ -134,6 +134,26 @@ def repo_status(repo_id: UUID, _: User = Depends(current_user)):
     if not r:
         raise GuardrailViolation("not_found", "Repository not found.")
     return _jsonable(r)
+
+
+@app.delete("/repos/{repo_id}", status_code=204)
+def remove_repo(repo_id: UUID, user: User = Depends(current_user), _=Depends(rate_limit)):
+    """Remove an indexed repo (and its chunks, history and files). Only the user who added it may."""
+    r = store.get_repo(repo_id)
+    if not r:
+        raise GuardrailViolation("not_found", "Repository not found.")
+    if settings.auth_required and str(r.get("created_by")) != str(user.id):
+        raise GuardrailViolation("forbidden", "Only the user who added this repository can remove it.")
+    try:
+        with repository_lock(repo_id, timeout=2.0) as dest:     # fails (409) while it is being indexed
+            store.delete_repo(repo_id)
+            if dest.exists():
+                _remove_owned(dest, dest.parent)
+    except GuardrailViolation as e:
+        if e.code == "repo_not_ready":
+            raise GuardrailViolation("repo_not_ready", "This repository is being indexed. Try again in a minute.") from None
+        raise
+    return Response(status_code=204)
 
 
 @app.get("/repos/{repo_id}/file")
