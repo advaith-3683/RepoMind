@@ -11,6 +11,8 @@
   const frame = (type, data) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
   const usage = { steps: 1, tokens_in: 25, tokens_out: 11, latency_ms: 120, cost_usd: 0, llm_cache_hits: 1 };
   const answerText = "Fixture answer <img src=x onerror=alert(1)> [invented.py:7]";
+  const errorMessage = "Fixture provider unavailable <b>literal</b>.";
+  const errorDetail = "Provider debug detail\n<img src=x onerror=alert(1)>";
   tab.on("pageerror", (error) => errors.push(error.message));
   await tab.route(origin + "/config", (route) => route.fulfill({ json: { auth_required: false } }));
   await tab.route(origin + "/repos", (route) => route.request().method() === "DELETE"
@@ -39,8 +41,9 @@
       terminal = frame("needs_clarification", { message: "Fixture: narrow the question.", suggest_mode: "agent" }); status = "needs_clarification";
     } else if (variant === "approval") {
       terminal = frame("approval_required", { action_id: "fixture-action", kind: "patch", payload: { title: "Fixture change", path: "src/main.js" } }); status = "awaiting_approval";
-    } else if (variant === "error") {
-      terminal = frame("error", { code: "internal", message: "Fixture provider unavailable." }); status = "error";
+    } else if (variant === "error" || variant === "error-no-detail") {
+      terminal = frame("error", { code: "internal", message: errorMessage,
+        ...(variant === "error" ? { detail: errorDetail } : {}) }); status = "error";
     } else if (variant === "malformed") terminal = "event: answer\ndata: {bad json}\n\n";
     else terminal = frame("answer", { text: answerText, found: variant !== "not-found", confidence: "low", groundedness: 0.5,
       citations: variant === "no-citations" || variant === "not-found" ? [] : [{ path: "src/main.js", start: 2, end: 4 }] });
@@ -93,10 +96,22 @@
       assert(dimensions.scrollWidth <= width && dimensions.bottom <= dimensions.height, "Composer overflowed viewport");
       await tab.screenshot({ path: `.playwright-mcp/chat-mocked-${width}.png`, fullPage: true });
       checks.push({ width, dimensions });
+      for (const value of ["error", "error-no-detail"]) {
+        variant = value; await reset(); await send(); const failed = await settled(errorMessage);
+        assert(await failed.locator(".chat-error").textContent() === errorMessage, "SSE error message missing");
+        assert(!(await failed.textContent()).includes("Provider debug detail"), "Debug detail leaked into answer");
+        const trace = tab.locator("[data-trace-content]").nth(width <= 900 ? 1 : 0);
+        if (width <= 900) await tab.locator(".mobile-trace > summary").click();
+        assert(await trace.getByText("internal", { exact: true }).isVisible(), "SSE error code missing from trace");
+        assert(await trace.locator(".chat-error").textContent() === errorMessage, "SSE error message missing from trace");
+        assert(await trace.locator(".trace-observation").count() === (value === "error" ? 2 : 1), "Optional error detail rendered incorrectly");
+        if (value === "error") assert(await trace.getByText(errorDetail, { exact: true }).isVisible(), "Error detail missing from trace");
+        assert(await tab.locator(".trace-card img, .trace-card b, .chat-error b").count() === 0, "SSE error became HTML");
+      }
     }
     await tab.setViewportSize({ width: 1440, height: 900 });
     for (const [value, expected] of [["no-citations", "Answer complete"], ["not-found", "Not found in this repo"],
-      ["approval", "Pending approval"], ["error", "Fixture provider unavailable."], ["malformed", "The answer service sent a malformed event. Please retry."],
+      ["approval", "Pending approval"], ["error", errorMessage], ["malformed", "The answer service sent a malformed event. Please retry."],
       ["cut", "The answer stream ended before completion. Please retry."], ["network", "Could not reach the repository service. Check your connection and retry."],
       ["validation", "Fixture guardrail rejected this query."]]) {
       variant = value; await reset(); await send(); const output = await settled(expected);

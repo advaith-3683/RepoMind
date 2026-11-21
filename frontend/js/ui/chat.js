@@ -116,6 +116,10 @@ export function initChat() {
       run.events.forEach((event, index) => {
         const card = element("section", event.type === "guardrail" ? "trace-card chat-warning" : "trace-card");
         if (event.type === "guardrail") card.append(element("h3", "", event.code), element("p", "", event.message));
+        else if (event.type === "error") {
+          card.append(element("h3", "", event.code), element("p", "chat-error", event.message));
+          if (typeof event.detail === "string" && event.detail) card.append(element("pre", "trace-observation", event.detail));
+        }
         else {
           card.append(element("h3", "", `${event.index} / ${event.tool}`), element("p", "", event.thought),
             element("pre", "trace-args", JSON.stringify(event.args, null, 2)));
@@ -154,7 +158,7 @@ export function initChat() {
             case "answer": run.answer = event; run.status = "Finishing…"; break;
             case "needs_clarification": run.clarification = event; run.status = "Needs clarification"; textarea()?.focus(); break;
             case "approval_required": run.approval = event; run.status = "Pending approval"; break;
-            case "error": run.error = event.message; run.status = "Could not answer"; break;
+            case "error": run.error = event.message; run.events.push(event); run.status = "Could not answer"; break;
             case "done": run.usage = event.usage;
               run.status = { completed: "Answer complete", needs_clarification: "Needs clarification", awaiting_approval: "Pending approval", error: "Could not answer" }[event.status]; break;
           }

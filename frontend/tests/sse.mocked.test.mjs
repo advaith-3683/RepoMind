@@ -31,6 +31,17 @@ test("mocked SSE: one chunk containing several frames", async () => {
   assert.deepEqual(events, [start, answer, done]);
 });
 
+test("mocked SSE: error messages and optional debug detail reach the UI unchanged", async () => {
+  for (const extra of [{}, { detail: "Provider debug text\n<b>literal</b>" }]) {
+    const failure = { type: "error", code: "llm_unavailable", message: "Please try again.", ...extra };
+    const events = [];
+    await readEventStream(response([[start, failure, { ...done, status: "error" }].map(frame).join("")]), {
+      onEvent: (event) => events.push(event),
+    });
+    assert.deepEqual(events[1], failure);
+  }
+});
+
 test("mocked SSE: every possible byte boundary, including UTF-8 characters", async () => {
   const bytes = encoder.encode(text);
   for (let index = 1; index < bytes.length; index++) {
