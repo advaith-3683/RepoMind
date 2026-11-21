@@ -1,0 +1,47 @@
+# RepoMind
+
+Agentic RAG assistant for codebases (Gemini embeddings, Groq answers, free-tier friendly: response cache + fast mode): ask questions about a GitHub repo and get answers with verified `file:line` citations. Built with guardrails (injection defence, sandboxed read-only tools, budgets, citation verification) and a human-in-the-loop approval gate for proposed changes, plus an eval harness.
+
+**Full details, architecture, status and next steps: [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md)**
+
+## Quick start
+```bash
+cd backend
+pip install -r requirements.txt
+cp ../.env.example .env          # fill in GEMINI_API_KEY (embeddings), LLM_API_KEY (Groq) and DATABASE_URL
+# run backend/sql/schema.sql once in the Supabase SQL editor
+python -m pytest -q              # 107 tests, no network or DB needed
+uvicorn app.main:app --reload    # http://localhost:8000  (API + frontend)
+python -m app.evals.run --redteam
+```
+
+On Windows with the official PostgreSQL 19 Command Line Tools installed, start the
+backend from the repository root:
+
+```powershell
+python scripts/start_backend.py
+# Optional read-only connection verification (does not start the server):
+python scripts/start_backend.py --check-db
+```
+
+The launcher uses `backend/.venv`, reads `backend/.env`, and selects Psycopg's Python
+implementation using child-process-only settings. The calling shell is unchanged.
+Use `--postgres-bin` for a different official client installation, `--port` for another
+local port, or `--no-reload` to disable development reload. It does not change
+system-wide PATH, execution policy, or other security settings.
+
+Repository endpoints require authentication when `AUTH_REQUIRED=true`. Authenticated
+live frontend use still needs the sign-in flow and bearer-token handling; the launcher
+does not bypass authentication.
+
+## Layout
+```
+backend/app/guardrails/   input, sandbox, secrets, budget, output checks
+backend/app/ingestion/    clone, chunker, embeddings, pipeline
+backend/app/retrieval/    hybrid search (pgvector + full-text + RRF + rerank)
+backend/app/agent/        loop, tools, prompts, LLM interface
+backend/app/hitl/         approval-gate state machine
+backend/app/evals/        metrics, red-team set, eval runner
+frontend/                 plain HTML/CSS/JS (built with Codex, see docs/FRONTEND_BRIEF.md)
+docs/                     report, API contract, frontend brief
+```

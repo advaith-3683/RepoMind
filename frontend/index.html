@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-auth-state="loading">
+<head>
+  <meta charset="utf-8" />
+  <title>RepoMind — Workspace</title>
+  <meta name="referrer" content="no-referrer">
+  <script src="js/oauth-callback.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script src="js/app.js" type="module"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to workspace</a>
+  <main class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+    <div class="auth-masthead">
+      <a class="auth-brand" href="./" aria-label="RepoMind home">R <span>/</span> M</a>
+      <p class="auth-edition">Codebase intelligence. Human agency.</p>
+    </div>
+    <div class="auth-content">
+    <div class="auth-hero">
+    <section class="auth-card">
+      <p class="eyebrow">RepoMind / From insight to intent</p>
+      <h1 id="auth-title" tabindex="-1">Understand the code.<br><span>Control the change.</span></h1>
+      <p class="auth-intro">Ask your GitHub codebase questions. Follow answers back to their sources. Then review AI-proposed enhancements—with every change in your hands.</p>
+      <div class="auth-entry">
+      <button class="primary" type="button" data-sign-in disabled>Continue with GitHub</button>
+      <p class="auth-message" data-auth-message role="status" aria-live="polite">Loading secure sign-in…</p>
+      <button class="repo-retry" type="button" data-auth-retry hidden>Retry connection</button>
+      <p class="auth-assurance">Your questions. Your review. Your decision to publish.</p>
+      </div>
+    </section>
+    <section class="auth-showcase" aria-labelledby="auth-showcase-title">
+      <div class="auth-showcase-header"><h2 id="auth-showcase-title">Inside RepoMind</h2><span class="auth-demo-label">Illustrative workflow</span></div>
+      <section class="auth-preview auth-preview-rag" aria-labelledby="auth-rag-title">
+        <div class="auth-preview-heading"><p class="eyebrow">01 / RAG intelligence</p><span class="auth-preview-symbol" aria-hidden="true">↗</span></div>
+        <h3 id="auth-rag-title">Answers with a way back to the code.</h3>
+        <p>Retrieve relevant source, build a grounded explanation, and inspect the reasoning behind it.</p>
+        <div class="auth-evidence-flow" aria-label="Repository context leads to a cited explanation">
+          <div><span class="auth-mini-label">Repository context</span><div class="auth-source-lines" aria-hidden="true"><i></i><i></i><i></i></div><span class="auth-source-note">Relevant source excerpts</span></div>
+          <span class="auth-flow-arrow" aria-hidden="true">→</span>
+          <div><span class="auth-mini-label">Cited explanation</span><div class="auth-answer-lines" aria-hidden="true"><i></i><i></i><i></i></div><span class="auth-source-note">Traceable to the source</span></div>
+        </div>
+      </section>
+      <section class="auth-preview auth-preview-hitl" aria-labelledby="auth-hitl-title">
+        <div class="auth-preview-heading"><p class="eyebrow">02 / Human-in-the-loop</p><span class="auth-preview-symbol" aria-hidden="true">↔</span></div>
+        <h3 id="auth-hitl-title">A proposal. Never an automatic change.</h3>
+        <p>Inspect suggested enhancements. Approve, edit, or reject them before deciding what happens next.</p>
+        <div class="auth-review-flow">
+          <div><span class="auth-mini-label">Proposed enhancement</span><span class="auth-review-note">Your review comes first</span></div>
+          <ul class="auth-review-options" aria-label="Available review choices, illustration only"><li>Approve</li><li>Edit</li><li>Reject</li></ul>
+        </div>
+        <p class="auth-publish-note"><span aria-hidden="true">↳</span> Publishing is a separate, explicit action you control.</p>
+      </section>
+      <p class="auth-showcase-note">Concept preview · No live answers or changes shown.</p>
+    </section>
+    </div>
+    <div class="auth-pillars">
+      <section><p class="eyebrow">01 / Explore</p><h2>Start with your repository.</h2><p>Bring a GitHub codebase into focus.</p></section>
+      <section><p class="eyebrow">02 / Understand</p><h2>Ask. Trace. Learn.</h2><p>Ground your understanding in the source.</p></section>
+      <section><p class="eyebrow">03 / Decide</p><h2>Review before you change.</h2><p>Approve, edit, or reject. Publish only by choice.</p></section>
+    </div>
+    <noscript>JavaScript is required to sign in and use RepoMind.</noscript>
+    </div>
+  </main>
+  <div id="app-shell" hidden>
+  <header class="topbar">
+    <a class="logo" href="./" aria-label="RepoMind home">R<span>/</span>M</a>
+    <nav aria-label="Main navigation">
+      <a href="#workspace" aria-current="page">Workspace</a>
+      <span aria-disabled="true" title="Not available in this static preview">Evaluations</span>
+      <span aria-disabled="true" title="Not available in this static preview">Documentation</span>
+    </nav>
+    <div class="header-account">
+      <div class="account-controls" data-account><span data-user-login></span><button type="button" data-sign-out>Sign out</button></div>
+    </div>
+  </header>
+  <div class="workspace-layout">
+    <aside class="repositories" aria-labelledby="repositories-title">
+      <p class="eyebrow">Library</p>
+      <h2 id="repositories-title">Repositories</h2>
+      <p class="small muted" data-repo-count>Loading repositories…</p>
+      <hr>
+      <div data-repo-message role="status" aria-live="polite"></div>
+      <ul class="repo-list" data-repo-list aria-label="Repositories" aria-busy="true"></ul>
+      <hr>
+      <h3>Add repository</h3>
+      <p class="muted">Connect a GitHub repository.</p>
+      <form class="repo-form" data-repo-form novalidate>
+        <label class="sr-only" for="repo-url">GitHub repository URL</label>
+        <input id="repo-url" name="url" type="url" placeholder="https://github.com/owner/repo" required aria-describedby="repo-form-message">
+        <button class="primary add-repo" type="submit">+ &nbsp;Add repository</button>
+        <p id="repo-form-message" data-form-message role="status" aria-live="polite"></p>
+      </form>
+    </aside>
+    <main class="workspace" id="workspace" tabindex="-1">
+      <header class="context-header"><h1>Workspace</h1><p data-repo-context>No repository selected</p></header>
+      <hr>
+      <section class="conversation" aria-label="Conversation" tabindex="0">
+        <div class="workspace-empty" data-workspace-state="empty" role="status" aria-live="polite">
+          <p class="eyebrow" data-workspace-label>Workspace</p>
+          <h2 data-workspace-title>Select a repository to start exploring your codebase.</h2>
+          <p class="muted" data-workspace-description>Select a ready repository from the library.</p>
+        </div>
+      </section>
+      <div class="composer-region">
+        <form class="composer" aria-label="Question composer">
+          <label class="sr-only" for="question">Ask a follow-up about this repository</label>
+          <textarea id="question" name="question" rows="1" maxlength="1000" placeholder="Ask about this repository…" aria-describedby="composer-note" disabled></textarea>
+          <hr>
+          <div class="composer-actions"><p id="composer-note">Question answering is not connected yet.</p><button class="primary" type="submit" disabled title="Question answering is not connected yet">Send ↗</button></div>
+        </form>
+        <p class="composer-notice sr-only" role="status"></p>
+      </div>
+    </main>
+    <aside class="trace" aria-labelledby="trace-title" tabindex="0">
+      <p class="eyebrow">Agent trace</p><h2 id="trace-title">No run yet</h2>
+      <p class="muted">Waiting for a question.</p><hr>
+      <p class="muted">Agent steps will appear here when a real question is run.</p>
+    </aside>
+  </div>
+  <section class="mobile-workspace" aria-label="Mobile workspace">
+    <header class="mobile-header">
+      <a href="./" class="mobile-brand"><span class="mobile-wide">RepoMind</span><span class="mobile-narrow">R / M</span></a>
+      <span class="mobile-account-name" data-account data-user-login></span>
+      <button type="button" data-account data-sign-out>Sign out</button>
+    </header>
+    <main class="mobile-content" id="mobile-workspace" tabindex="-1">
+      <details class="mobile-picker">
+        <summary>
+          <span class="mobile-label">Repository <span data-selected-status></span></span>
+          <strong><span data-selected-name>Loading repositories…</span> <span class="disclosure-arrow" aria-hidden="true">▾</span></strong>
+          <span class="picker-description" data-selected-description>Select a ready repository</span>
+        </summary>
+        <div data-repo-message role="status" aria-live="polite"></div>
+        <p class="small muted" data-repo-count>Loading repositories…</p>
+        <ul class="picker-options" data-repo-list aria-label="Repositories" aria-busy="true"></ul>
+        <form class="repo-form" data-repo-form novalidate>
+          <label for="mobile-repo-url">Add repository</label>
+          <input id="mobile-repo-url" name="url" type="url" placeholder="https://github.com/owner/repo" required aria-describedby="mobile-repo-form-message">
+          <button class="primary add-repo" type="submit">+ Add repository</button>
+          <p id="mobile-repo-form-message" data-form-message role="status" aria-live="polite"></p>
+        </form>
+      </details>
+      <section class="mobile-conversation workspace-empty" data-workspace-state="empty" role="status" aria-live="polite" aria-label="Workspace status">
+        <p class="mobile-label" data-workspace-label>Workspace</p>
+        <h1 data-workspace-title>Select a repository to start exploring your codebase.</h1>
+        <p class="muted" data-workspace-description>Select a ready repository from the library.</p>
+      </section>
+      <details class="mobile-trace">
+        <summary>
+          <span class="trace-summary-heading"><span class="mobile-label">Agent trace</span><span class="disclosure-arrow" aria-hidden="true">▾</span></span>
+          <span class="trace-summary-meta">Waiting for a question</span>
+        </summary>
+        <p class="mobile-trace-content muted">Agent steps will appear here when a real question is run.</p>
+      </details>
+      <form class="mobile-composer" aria-label="Mobile question composer">
+        <label class="sr-only" for="mobile-question">Ask about this repository</label>
+        <textarea id="mobile-question" rows="1" maxlength="1000" placeholder="Ask about this repository…" aria-describedby="mobile-preview-note" disabled></textarea>
+        <hr>
+        <p class="mobile-narrow character-count">0 / 1000 characters</p>
+        <div class="mobile-narrow mode-controls" role="group" aria-label="Preview answer mode">
+          <button type="button" aria-pressed="true" data-mode="fast">Fast <span aria-hidden="true">✓</span></button>
+          <button type="button" aria-pressed="false" data-mode="agent">Agent</button>
+        </div>
+        <p class="mobile-narrow mode-description">Fast: 1 retrieval + 1 LLM call</p>
+        <div class="mobile-composer-footer"><p class="mobile-wide" data-repo-composer>No repository selected</p><button class="primary" disabled type="submit" title="Not enabled in this static preview"><span class="mobile-wide">Send ↑</span><span class="mobile-narrow">Send question ↗</span></button></div>
+        <p class="small muted" id="mobile-preview-note">Question answering is not connected yet.</p>
+        <span class="sr-only mobile-composer-notice" role="status"></span>
+      </form>
+    </main>
+    <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
+      <a href="#mobile-workspace" aria-current="page">⌂ &nbsp;Workspace</a>
+      <button type="button" data-open-repos>▤ &nbsp;Repos</button>
+      <button type="button" disabled title="Activity screen is not enabled in this static preview">≡ &nbsp;Activity</button>
+    </nav>
+  </section>
+  </div>
+</body>
+</html>

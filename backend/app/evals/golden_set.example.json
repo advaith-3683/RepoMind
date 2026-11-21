@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to golden_set.json and fill in for a repo you have indexed. 30-50 entries recommended. expected_files = files a correct answer must draw from; expected_keywords = terms a correct answer should mention.",
+  "repo_id": "PUT-INDEXED-REPO-UUID-HERE",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "Where is user authentication handled?",
+      "expected_files": ["app/auth.py"],
+      "expected_keywords": ["login", "token"]
+    },
+    {
+      "id": "q2",
+      "question": "How are database connections created?",
+      "expected_files": ["app/db.py"],
+      "expected_keywords": ["connect"]
+    }
+  ]
+}

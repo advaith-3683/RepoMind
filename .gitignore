@@ -1,0 +1,16 @@
+.env
+*.env
+!.env.example
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+data/
+backend/data/
+backend/app/evals/results/
+backend/app/evals/golden_set.json
+node_modules/
+.DS_Store
+# Local Playwright MCP artifacts
+.playwright-mcp/
