@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     gemini_embed_model: str = "gemini-embedding-001"  # verify against current Gemini docs
     embed_dim: int = 768                              # must match vector(768) in sql/schema.sql
     database_url: str = ""                            # Supabase Postgres connection string
+    embed_batch_size: int = 25                        # chunks per Gemini embedding call (smaller = gentler on free-tier quota)
+    embed_batch_delay_s: float = 1.0                  # pause between embedding calls
 
     # --- answering LLM (any OpenAI-compatible API; Groq by default) ---
     llm_provider: str = "openai_compat"               # "openai_compat" | "gemini"

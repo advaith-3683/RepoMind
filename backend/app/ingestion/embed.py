@@ -14,7 +14,7 @@ from ..config import Settings
 T = TypeVar("T")
 
 
-def with_backoff(fn: Callable[[], T], retries: int = 5, base: float = 1.0) -> T:
+def with_backoff(fn: Callable[[], T], retries: int = 5, base: float = 1.0, max_delay: float | None = None) -> T:
     """Retry on rate-limit / transient errors (429, 503) with exponential backoff + jitter."""
     for attempt in range(retries + 1):
         try:
@@ -24,7 +24,8 @@ def with_backoff(fn: Callable[[], T], retries: int = 5, base: float = 1.0) -> T:
             transient = any(t in msg for t in ("429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "timed out"))
             if not transient or attempt == retries:
                 raise
-            time.sleep(base * (2 ** attempt) + random.random() * 0.5)
+            delay = base * (2 ** attempt)
+            time.sleep((min(delay, max_delay) if max_delay else delay) + random.random() * 0.5)
     raise RuntimeError("unreachable")
 
 
@@ -61,7 +62,8 @@ class GeminiEmbedder:
                 config=types.EmbedContentConfig(task_type=task_type, output_dimensionality=self._dim),
             )
 
-        resp = with_backoff(call)
+        # Free-tier quotas are per minute: wait up to ~4 min per batch instead of giving up after ~30 s.
+        resp = with_backoff(call, retries=7, base=4.0, max_delay=60.0)
         # truncated (<3072) Gemini embeddings are not unit-length => normalise for cosine search
         return [_normalize(list(e.values)) for e in resp.embeddings]
 

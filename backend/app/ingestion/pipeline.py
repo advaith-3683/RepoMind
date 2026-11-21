@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -86,8 +87,11 @@ def _ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
 
         embedder = embedder or GeminiEmbedder(s)
         store.delete_chunks(repo_id)
-        for i in range(0, len(chunks), BATCH):
-            batch = chunks[i:i + BATCH]
+        size = max(1, s.embed_batch_size)
+        for i in range(0, len(chunks), size):
+            if i and s.embed_batch_delay_s > 0:
+                time.sleep(s.embed_batch_delay_s)
+            batch = chunks[i:i + size]
             store.insert_chunks(repo_id, batch, embedder.embed_documents([c.embed_text() for c in batch]))
 
         store.update_repo(
@@ -100,7 +104,10 @@ def _ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
         log_failure("filesystem_error" if isinstance(e, OSError) else "unexpected_error",
                     errno=e.errno if isinstance(e, OSError) else None)
         _log_error_kind(e)
-        store.update_repo(repo_id, status="failed", error="Indexing failed. Please try again.")
+        quota = type(e).__name__ == "ClientError" and getattr(e, "code", None) == 429
+        store.update_repo(repo_id, status="failed", error=(
+            "The embedding service is rate-limited right now. Wait a few minutes and retry." if quota
+            else "Indexing failed. Please try again."))
 
 
 def _log_error_kind(exc: Exception) -> None:

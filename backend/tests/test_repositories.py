@@ -554,3 +554,54 @@ def test_ingestion_failure_logs_only_error_kind(monkeypatch, caplog):
     caplog.set_level("WARNING")
     pipeline._log_error_kind(Boom(secret))
     assert "type=Boom code=429" in caplog.text and secret not in caplog.text
+
+
+def test_backoff_caps_delay_and_retries(monkeypatch):
+    from app.ingestion import embed
+    sleeps = []
+    monkeypatch.setattr(embed.time, "sleep", sleeps.append)
+    monkeypatch.setattr(embed.random, "random", lambda: 0.0)
+    calls = {"n": 0}
+
+    def fn():
+        calls["n"] += 1
+        if calls["n"] < 7:
+            raise RuntimeError("429 RESOURCE_EXHAUSTED")
+        return "ok"
+    assert embed.with_backoff(fn, retries=7, base=4.0, max_delay=60.0) == "ok"
+    assert sleeps == [4.0, 8.0, 16.0, 32.0, 60.0, 60.0]
+
+
+def test_ingestion_rate_limit_gives_friendly_error_and_paces_batches(monkeypatch, tmp_path):
+    from app.config import get_settings
+    from app.ingestion import pipeline
+    updates, sleeps = [], []
+    s = get_settings()
+    monkeypatch.setattr(s, "embed_batch_size", 2)
+    monkeypatch.setattr(s, "embed_batch_delay_s", 0.5)
+    monkeypatch.setattr(s, "repos_dir", str(tmp_path))
+    monkeypatch.setattr(pipeline.time, "sleep", sleeps.append)
+    monkeypatch.setattr(pipeline.store, "update_repo", lambda rid, **kw: updates.append(kw))
+    monkeypatch.setattr(pipeline.store, "delete_chunks", lambda rid: None)
+    inserted = []
+    monkeypatch.setattr(pipeline.store, "insert_chunks", lambda rid, b, v: inserted.append(len(b)))
+    monkeypatch.setattr(pipeline, "clone_repo", lambda *a, **k: "a" * 40)
+    chunks = [SimpleNamespace(embed_text=lambda: "x") for _ in range(5)]
+    monkeypatch.setattr(pipeline, "build_chunks", lambda root, st: (chunks, 1))
+
+    class Quota(Exception):
+        code = 429
+    Quota.__name__ = "ClientError"
+
+    class Embedder:
+        def __init__(self):
+            self.n = 0
+
+        def embed_documents(self, texts):
+            self.n += 1
+            if self.n == 3:
+                raise Quota("rate limited")
+            return [[0.0]] * len(texts)
+    pipeline._ingest_repo(uuid4(), "https://github.com/o/r", Embedder())
+    assert inserted == [2, 2] and sleeps == [0.5, 0.5]
+    assert updates[-1]["status"] == "failed" and "rate-limited" in updates[-1]["error"]
