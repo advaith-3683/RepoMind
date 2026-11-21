@@ -218,6 +218,66 @@ test("sign-in uses configured OAuth endpoint, scopes, and a clean return URL", a
   assert.equal(target.searchParams.has("apikey"), false);
 });
 
+test("page-load initialization clears an abandoned sign-in and allows retry", async () => {
+  const { auth, state } = instance(); await auth.initialize(); auth.signIn();
+  assert.equal(state().phase, "redirecting");
+  await auth.initialize();
+  assert.equal(state().phase, "signed-out");
+  navigation = null;
+  auth.signIn();
+  assert.ok(navigation);
+});
+
+test("pageshow resets the sign-in phase and re-enables the actual button for retry", async () => {
+  const auth = createAuth();
+  const nodes = new Map();
+  const events = new Map();
+  const node = (selector) => {
+    if (!nodes.has(selector)) nodes.set(selector, {
+      hidden: false, dataset: {}, addEventListener(name, listener) { this[name] = listener; },
+    });
+    return nodes.get(selector);
+  };
+  document.querySelector = node;
+  document.querySelectorAll = () => [];
+  window.matchMedia = () => ({ matches: false, addEventListener() {} });
+  window.addEventListener = (name, listener) => events.set(name, listener);
+  const script = readFileSync(new URL("../js/app.js", import.meta.url), "utf8")
+    .replace(/^import .*;\r?\n/gm, "");
+  vm.runInNewContext(script, {
+    document, window, createAuth: () => auth,
+    initChat: () => ({ setRepository() {} }),
+    initRepositories: () => ({ start() {}, stop() {} }), renderWorkspaceState() {},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const button = node("[data-sign-in]");
+  for (const persisted of [false, true]) {
+    button.click();
+    assert.equal(button.disabled, true);
+    assert.equal(document.documentElement.dataset.authState, "redirecting");
+    events.get("pageshow")({ persisted });
+    if (persisted) await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(button.disabled, false);
+    assert.equal(button.textContent, "Continue with GitHub");
+    assert.equal(document.documentElement.dataset.authState, "signed-out");
+    navigation = null;
+    button.click();
+    assert.ok(navigation);
+    auth.resetSignIn();
+  }
+});
+
+test("sign-in reset preserves authenticated sessions and configuration errors", async () => {
+  storeSession(); const { auth, state } = instance(); await auth.initialize();
+  const saved = storage.get(SESSION);
+  auth.resetSignIn();
+  assert.equal(state().phase, "signed-in");
+  assert.equal(storage.get(SESSION), saved);
+  config.supabase_anon_key = "invalid";
+  await auth.initialize(); auth.resetSignIn();
+  assert.equal(state().phase, "error");
+});
+
 test("sign-out revokes only the current server session and clears app-owned storage", async () => {
   storeSession(); storage.set("unrelated", "preserved");
   const { auth, state } = instance(); await auth.initialize(); await auth.signOut();

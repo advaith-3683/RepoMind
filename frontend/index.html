@@ -102,21 +102,27 @@
           <h2 data-workspace-title>Select a repository to start exploring your codebase.</h2>
           <p class="muted" data-workspace-description>Select a ready repository from the library.</p>
         </div>
+        <div data-chat-output hidden aria-live="polite" aria-atomic="false"></div>
       </section>
       <div class="composer-region">
-        <form class="composer" aria-label="Question composer">
+        <form class="composer" data-chat-form aria-label="Question composer">
           <label class="sr-only" for="question">Ask a follow-up about this repository</label>
           <textarea id="question" name="question" rows="1" maxlength="1000" placeholder="Ask about this repository…" aria-describedby="composer-note" disabled></textarea>
           <hr>
-          <div class="composer-actions"><p id="composer-note">Question answering is not connected yet.</p><button class="primary" type="submit" disabled title="Question answering is not connected yet">Send ↗</button></div>
+          <div class="mode-controls" role="group" aria-label="Answer mode">
+            <button type="button" aria-pressed="true" data-mode="fast" title="1 retrieval + 1 LLM call">Fast</button>
+            <button type="button" aria-pressed="false" data-mode="agent" title="Multi-step search, can propose changes">Agent</button>
+          </div>
+          <p class="mode-description" id="composer-note">Fast: 1 retrieval + 1 LLM call</p>
+          <div class="composer-actions"><p data-character-count>0 / 1000 characters</p><button class="repo-retry" type="button" data-stop hidden>Stop run ■</button><button class="primary" type="submit" data-send disabled>Send ↗</button></div>
         </form>
         <p class="composer-notice sr-only" role="status"></p>
       </div>
     </main>
     <aside class="trace" aria-labelledby="trace-title" tabindex="0">
       <p class="eyebrow">Agent trace</p><h2 id="trace-title">No run yet</h2>
-      <p class="muted">Waiting for a question.</p><hr>
-      <p class="muted">Agent steps will appear here when a real question is run.</p>
+      <p class="muted" data-trace-status>Waiting for a question.</p><hr>
+      <div data-trace-content><p class="muted">Agent steps will appear here when a real question is run.</p></div>
     </aside>
   </div>
   <section class="mobile-workspace" aria-label="Mobile workspace">
@@ -147,25 +153,25 @@
         <h1 data-workspace-title>Select a repository to start exploring your codebase.</h1>
         <p class="muted" data-workspace-description>Select a ready repository from the library.</p>
       </section>
+      <div data-chat-output hidden aria-live="polite" aria-atomic="false"></div>
       <details class="mobile-trace">
         <summary>
           <span class="trace-summary-heading"><span class="mobile-label">Agent trace</span><span class="disclosure-arrow" aria-hidden="true">▾</span></span>
           <span class="trace-summary-meta">Waiting for a question</span>
         </summary>
-        <p class="mobile-trace-content muted">Agent steps will appear here when a real question is run.</p>
+        <div class="mobile-trace-content" data-trace-content><p class="muted">Agent steps will appear here when a real question is run.</p></div>
       </details>
-      <form class="mobile-composer" aria-label="Mobile question composer">
+      <form class="mobile-composer" data-chat-form aria-label="Mobile question composer">
         <label class="sr-only" for="mobile-question">Ask about this repository</label>
         <textarea id="mobile-question" rows="1" maxlength="1000" placeholder="Ask about this repository…" aria-describedby="mobile-preview-note" disabled></textarea>
         <hr>
-        <p class="mobile-narrow character-count">0 / 1000 characters</p>
-        <div class="mobile-narrow mode-controls" role="group" aria-label="Preview answer mode">
-          <button type="button" aria-pressed="true" data-mode="fast">Fast <span aria-hidden="true">✓</span></button>
-          <button type="button" aria-pressed="false" data-mode="agent">Agent</button>
+        <p class="character-count" data-character-count>0 / 1000 characters</p>
+        <div class="mode-controls" role="group" aria-label="Answer mode">
+          <button type="button" aria-pressed="true" data-mode="fast" title="1 retrieval + 1 LLM call">Fast</button>
+          <button type="button" aria-pressed="false" data-mode="agent" title="Multi-step search, can propose changes">Agent</button>
         </div>
-        <p class="mobile-narrow mode-description">Fast: 1 retrieval + 1 LLM call</p>
-        <div class="mobile-composer-footer"><p class="mobile-wide" data-repo-composer>No repository selected</p><button class="primary" disabled type="submit" title="Not enabled in this static preview"><span class="mobile-wide">Send ↑</span><span class="mobile-narrow">Send question ↗</span></button></div>
-        <p class="small muted" id="mobile-preview-note">Question answering is not connected yet.</p>
+        <p class="mode-description" id="mobile-preview-note">Fast: 1 retrieval + 1 LLM call</p>
+        <div class="mobile-composer-footer"><p class="mobile-wide" data-repo-composer>No repository selected</p><button class="repo-retry" type="button" data-stop hidden>Stop run ■</button><button class="primary" data-send disabled type="submit">Send question ↗</button></div>
         <span class="sr-only mobile-composer-notice" role="status"></span>
       </form>
     </main>
@@ -176,5 +182,11 @@
     </nav>
   </section>
   </div>
+  <dialog class="citation-dialog" data-citation-dialog aria-labelledby="citation-title">
+    <p class="eyebrow">Source evidence</p>
+    <h2 id="citation-title"></h2>
+    <button class="repo-retry" type="button">Back to answer</button>
+    <pre data-citation-content aria-live="polite"></pre>
+  </dialog>
 </body>
 </html>

@@ -16,7 +16,7 @@ test("only an actually ready repository produces a ready state", () => {
   }
   const view = workspaceView({ selectedRepo: { status: "ready" }, repoCount: 1 });
   assert.equal(view.state, "ready");
-  assert.match(view.description, /Question answering is not connected yet/);
+  assert.match(view.description, /Ask a question about your selected repository/);
 });
 
 test("loading does not display a stale ready state", () => {

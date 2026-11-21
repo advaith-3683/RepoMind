@@ -16,7 +16,7 @@ export async function publicRequest(path, options = {}) {
   return parseResponse(await backendFetch(path, options));
 }
 
-async function backendFetch(path, { method = "GET", body, signal, accessToken } = {}) {
+async function backendFetch(path, { method = "GET", body, signal, accessToken, accept = "application/json" } = {}) {
   const base = (window.REPOMIND_API_BASE || "").replace(/\/$/, "");
   let response;
   try {
@@ -24,7 +24,7 @@ async function backendFetch(path, { method = "GET", body, signal, accessToken } 
       method, signal,
       cache: "no-store", redirect: "error", credentials: "omit",
       headers: {
-        Accept: "application/json",
+        Accept: accept,
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
@@ -52,12 +52,14 @@ async function parseResponse(response) {
   return data;
 }
 
-export async function repositoryRequest(path, options = {}) {
+// Shared authentication/retry path for JSON requests and POST event streams.
+export async function authenticatedResponse(path, options = {}) {
   if (!authentication) throw new ApiError("Sign-in is still loading.", "unauthorized", 401);
   let credentials = await authentication.credentials();
   if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
   let response = await backendFetch(path, { ...options, accessToken: credentials.accessToken });
   if (response.status === 401) {
+    await response.body?.cancel();
     credentials = await authentication.recover(credentials);
     if (credentials) {
       if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
@@ -68,5 +70,10 @@ export async function repositoryRequest(path, options = {}) {
       throw new ApiError("Please sign in to continue.", "unauthorized", 401);
     }
   }
-  return parseResponse(response);
+  if (!response.ok) await parseResponse(response);
+  return response;
+}
+
+export async function repositoryRequest(path, options = {}) {
+  return parseResponse(await authenticatedResponse(path, options));
 }

@@ -233,6 +233,10 @@ export function createAuth() {
     }
   }
 
+  function resetSignIn() {
+    if (state.phase === "redirecting") publish("signed-out");
+  }
+
   async function signOut() {
     const token = session?.access_token;
     expire("");
@@ -248,7 +252,7 @@ export function createAuth() {
 
   configureAuthentication({ credentials, recover, expire });
   return {
-    initialize, signIn, signOut,
+    initialize, signIn, signOut, resetSignIn,
     subscribe(listener) { listeners.add(listener); listener({ ...state }); return () => listeners.delete(listener); },
   };
 }

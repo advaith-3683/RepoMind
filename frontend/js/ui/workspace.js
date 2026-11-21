@@ -10,7 +10,7 @@ export function workspaceView({ loading, error, selectedRepo, repoCount = 0 }) {
   };
   if (selectedRepo?.status === "ready") return {
     state: "ready", label: "Repository ready", title: "Ready to explore",
-    description: "Your selected repository is ready. Question answering is not connected yet.",
+    description: "Ask a question about your selected repository. Answers will cite the retrieved code.",
   };
   return {
     state: "empty", label: "Workspace", title: "Select a repository to start exploring your codebase.",

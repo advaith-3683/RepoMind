@@ -216,5 +216,11 @@
     assert(await tab.locator("#app-shell").isHidden(), "Unauthenticated workspace remained visible");
     assert(errors.length === 0, "Unexpected browser JavaScript errors");
     return { passed: true, checks, repositoryAndAuthStates: "passed", scriptErrors: errors.length, verification: "mocked APIs, real browser rendering" };
+  } catch (error) {
+    const state = await tab.evaluate(() => ({ width: innerWidth, auth: document.documentElement.dataset.authState,
+      shellHidden: document.querySelector("#app-shell").hidden,
+      desktopDisplay: getComputedStyle(document.querySelector(".workspace-layout")).display,
+      repositoryInput: document.querySelector("#repo-url").getBoundingClientRect().toJSON() }));
+    throw new Error(`${error.message}\nUI state: ${JSON.stringify(state)}`);
   } finally { await context.close(); }
 })
