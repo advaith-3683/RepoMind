@@ -20,6 +20,7 @@ from .guardrails.input import validate_query
 from .ingestion.clone import parse_github_url
 from .ingestion.pipeline import ingest_repo
 from .publish import publish_action
+from .repositories import repository_snapshot
 from .schemas import AskRequest, DecisionRequest, FeedbackRequest, RepoCreate
 
 settings = get_settings()
@@ -138,10 +139,8 @@ def repo_status(repo_id: UUID, _: User = Depends(current_user)):
 @app.get("/repos/{repo_id}/file")
 def repo_file(repo_id: UUID, path: str, start: int = 1, end: int | None = None, _: User = Depends(current_user)):
     """Citation preview: sandboxed, secret-redacted, line-numbered slice of a file."""
-    root = Path(settings.repos_dir) / str(repo_id)
-    if not root.exists():
-        raise GuardrailViolation("not_found", "Repository not found.")
-    return read_slice(root, path, start, end, max_lines=200)
+    with repository_snapshot(repo_id, settings) as root:
+        return read_slice(root, path, start, end, max_lines=200)
 
 
 # ---------------- ask (SSE) ----------------

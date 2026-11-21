@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -6,6 +7,59 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 
 from app.retrieval.hybrid import Hit
+
+_credential_values: set[str] = set()
+
+
+def _remember_credentials(values):
+    for name, value in values.items():
+        if ("key" in name.lower() or name.lower() == "database_url") and isinstance(value, str) and value:
+            _credential_values.add(value)
+
+
+def _redact_credentials(text):
+    for value in sorted(_credential_values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
+    return text
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    report = (yield).get_result()
+    if report.longrepr:
+        original = str(report.longrepr)
+        redacted = _redact_credentials(original)
+        if redacted != original:
+            report.longrepr = redacted
+    report.sections = [(name, _redact_credentials(content)) for name, content in report.sections]
+
+
+def pytest_configure(config):
+    """Keep developer credentials out of unit tests and assertion diagnostics."""
+    from app.config import Settings, get_settings
+
+    patch = pytest.MonkeyPatch()
+    config.add_cleanup(patch.undo)
+    # Run before collection: some test modules import the app and cache settings.
+    patch.setitem(Settings.model_config, "env_file", None)
+    fields = {name.lower() for name in Settings.model_fields}
+    for name in list(os.environ):
+        if name.lower() in fields:
+            _remember_credentials({name: os.environ[name]})
+            patch.delenv(name)
+    # Explicitly supplied test credentials must not appear in Settings reprs either.
+    for name, field in Settings.model_fields.items():
+        if "key" in name or name == "database_url":
+            patch.setattr(field, "repr", False)
+    original_init = Settings.__init__
+
+    def isolated_init(self, **values):
+        _remember_credentials(values)
+        original_init(self, **values)
+
+    patch.setattr(Settings, "__init__", isolated_init)
+    get_settings.cache_clear()
+    config.add_cleanup(get_settings.cache_clear)
 
 
 @pytest.fixture(autouse=True)

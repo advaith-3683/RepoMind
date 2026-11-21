@@ -1,5 +1,4 @@
 import os
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,6 +10,7 @@ from ..guardrails.secrets import redact_secrets
 from .chunker import Chunk, chunk_file, detect_language
 from .clone import clone_repo
 from .embed import Embedder, GeminiEmbedder
+from ..repositories import _remove_owned, repository_lock
 
 SKIP_DIRS = {
     ".git", "node_modules", "dist", "build", "venv", ".venv", "__pycache__", ".next", "vendor",
@@ -50,13 +50,26 @@ def build_chunks(root: Path, settings: Settings) -> tuple[list[Chunk], int]:
 
 
 def ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
+    """Serialize ingestion with snapshot readers/restorers; never reindex a ready row."""
+    try:
+        with repository_lock(repo_id):
+            current = store.get_repo(repo_id)
+            if not current or current["status"] != "pending":
+                return
+            _ingest_repo(repo_id, url, embedder)
+    except GuardrailViolation:
+        # We did not acquire ownership of ingestion; leave persistent state alone.
+        return
+
+
+def _ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
     """Background job: clone -> chunk -> embed -> store. Never raises; records status instead."""
     s = get_settings()
     dest = Path(s.repos_dir) / str(repo_id)
     try:
         store.update_repo(repo_id, status="cloning")
         if dest.exists():
-            shutil.rmtree(dest)
+            _remove_owned(dest, dest.parent)
         sha = clone_repo(url, dest, s.max_repo_mb)
         store.update_repo(repo_id, status="indexing", commit_sha=sha)
 

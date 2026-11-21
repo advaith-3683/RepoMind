@@ -1,0 +1,45 @@
+# Local credentials, including nested dotenv files; keep documented placeholders.
+**/.env
+**/.env.*
+**/*.env
+!**/.env.example
+
+# Environments, dependencies, and generated application data.
+**/.venv
+**/venv
+**/node_modules
+**/data
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.cache
+**/.coverage*
+**/htmlcov
+**/coverage
+**/dist
+**/build
+**/*.egg-info
+**/*.log
+
+# Source-control metadata, local tooling, and editor artifacts.
+**/.git
+**/.playwright-mcp
+**/.agents
+**/.codex
+**/.claude
+**/.idea
+**/.vscode
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*~
+
+# Tests, reports, and local scripts are not needed by the deployed service.
+backend/tests
+frontend/tests
+backend/app/evals/results
+backend/app/evals/golden_set.json
+docs
+scripts

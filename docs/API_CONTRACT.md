@@ -21,7 +21,7 @@ FastAPI validation failures (bad UUID, wrong types) return `422` with FastAPI's 
 | 404 | `not_found` |
 | 409 | `repo_not_ready`, `invalid_transition`, `publish_not_ready` (approve first), `publish_in_progress`, `github_conflict` (file changed on GitHub / edit no longer applies / nothing to change) |
 | 429 | `rate_limited` (per user; provider quota problems surface as an SSE `error`/`needs_clarification`, not HTTP 429), `index_quota_exceeded` (new repos per user per day) |
-| 502 | `github_error` (GitHub unreachable or unexpected) |
+| 502 | `github_error` (GitHub unreachable, unexpected response, or indexed repository snapshot unavailable) |
 | 503 | `auth_unavailable`, `auth_not_configured` |
 
 Always show `error.message`; switch on `error.code` only for special UX (e.g. focus the input on `prompt_injection`).
@@ -50,6 +50,7 @@ Show `error` when `status == "failed"`. Only `ready` repos can be queried.
 
 ### `GET /repos/{id}/file?path=app/auth.py&start=3&end=40` → `200`
 Citation preview. Sandboxed + secret-redacted. Max 200 lines per call.
+File previews, agent runs, and patch-diff generation verify anonymous public access and the indexed commit before reading local code. Missing or damaged clones are restored at the stored commit SHA under a repository lock; stored chunks are not reindexed. Restoration failures use the existing error envelope and `github_error` (502), or `repo_not_ready` (409) for an unavailable indexed revision or a busy repository. No fallback to the latest branch is performed.
 ```json
 { "path":"app/auth.py", "start":3, "end":40, "total_lines":120, "lines":["def login(...):", "..."] }
 ```

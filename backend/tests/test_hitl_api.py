@@ -78,6 +78,16 @@ def test_file_endpoint_sandbox(repo, monkeypatch):
     import uuid, shutil
     u = str(uuid.uuid4())
     shutil.copytree(repo, repo.parent / u)
+    from contextlib import contextmanager
+
+    @contextmanager
+    def snapshot(repo_id, settings):
+        root = repo.parent / str(repo_id)
+        if not root.exists():
+            raise GuardrailViolation("not_found", "Repository not found.")
+        yield root
+
+    monkeypatch.setattr(main, "repository_snapshot", snapshot)
     ok = client.get(f"/repos/{u}/file", params={"path": "app/auth.py", "start": 3, "end": 5})
     assert ok.status_code == 200 and ok.json()["lines"][0].startswith("def login")
     for bad in ["../x", ".env", ".git/config"]:

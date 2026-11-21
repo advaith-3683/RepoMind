@@ -1,5 +1,4 @@
 """Wires agent + retrieval + persistence together for one /ask request."""
-from pathlib import Path
 from typing import Iterator
 
 from . import store
@@ -16,6 +15,8 @@ from .db import get_conn
 from .guardrails.budget import Budget
 from .ingestion.embed import GeminiEmbedder
 from .retrieval.hybrid import find_symbols, hybrid_search
+from .repositories import repository_snapshot
+from .guardrails.errors import GuardrailViolation
 
 _embedder = None
 
@@ -35,9 +36,11 @@ def cost_usd(tokens_in: int, tokens_out: int) -> float:
 def patch_diff_for(repo_id, payload: dict) -> str | None:
     """Unified diff of a patch proposal against the indexed clone (None if it can't be computed)."""
     try:
-        root = Path(get_settings().repos_dir) / str(repo_id)
-        original = resolve_in_repo(root, payload["path"]).read_text(encoding="utf-8")
-        return make_diff(payload["path"], original, apply_edits(original, payload["edits"]))
+        with repository_snapshot(repo_id) as root:
+            original = resolve_in_repo(root, payload["path"]).read_text(encoding="utf-8")
+            return make_diff(payload["path"], original, apply_edits(original, payload["edits"]))
+    except GuardrailViolation:
+        raise
     except Exception:  # noqa: BLE001
         return None
 
@@ -63,9 +66,9 @@ def stream_answer(repo: dict, question: str, mode: str | None = None, user_id: s
     yield emit({"type": "start", "query_id": str(query_id), "mode": mode})
     try:
         embedder, llm = get_embedder(), build_llm(s)
-        with get_conn() as conn:
+        with repository_snapshot(repo_id, s) as root, get_conn() as conn:
             tools = RepoTools(
-                repo_root=Path(s.repos_dir) / str(repo_id),
+                repo_root=root,
                 search_fn=lambda q, k: hybrid_search(conn, repo_id, q, embedder, k=k, pool=s.retrieval_pool),
                 symbol_fn=lambda name: find_symbols(conn, repo_id, name),
                 evidence=EvidenceStore(),
@@ -87,6 +90,9 @@ def stream_answer(repo: dict, question: str, mode: str | None = None, user_id: s
                 elif ev["type"] == "error":
                     status = "error"
                 yield emit(ev)
+    except GuardrailViolation as e:
+        status = "error"
+        yield emit({"type": "error", "code": e.code, "message": e.message})
     except Exception as e:  # noqa: BLE001
         status = "error"
         yield emit({"type": "error", "code": "internal", "message": "Something went wrong answering that.",
