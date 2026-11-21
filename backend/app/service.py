@@ -1,4 +1,5 @@
 """Wires agent + retrieval + persistence together for one /ask request."""
+import logging
 from typing import Iterator
 
 from . import store
@@ -17,6 +18,8 @@ from .ingestion.embed import GeminiEmbedder
 from .retrieval.hybrid import find_symbols, hybrid_search
 from .repositories import repository_snapshot
 from .guardrails.errors import GuardrailViolation
+
+log = logging.getLogger(__name__)
 
 _embedder = None
 
@@ -96,6 +99,7 @@ def stream_answer(repo: dict, question: str, mode: str | None = None, user_id: s
     except LLMError as e:
         status = "error"
         limited = is_rate_limit(e) or e.status in (413, 429)
+        log.warning("llm_error mode=%s status=%s detail=%s", mode, e.status, str(e)[:300])
         yield emit({"type": "error", "code": "rate_limited" if limited else "llm_unavailable",
                     "message": ("The language model is rate-limited right now. Wait a minute and ask again."
                                 if limited else "The language model is unavailable right now. Try again shortly."),
