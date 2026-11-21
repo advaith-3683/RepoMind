@@ -112,3 +112,5 @@ Body `{ "query_id":"uuid", "rating": 1 | -1, "correction": "optional string <=20
 
 ## Rate limiting
 20 requests/minute per signed-in user (per IP when auth is off) on mutating endpoints (`/repos` POST, `/ask`, decision, feedback). On `429`, show the message and disable the submit button for ~10s.
+
+SSE `error` events carry `code`, `message` and an optional `detail` (debug text). Codes from the model provider: `rate_limited` (provider quota/TPM hit: ask again in a minute) and `llm_unavailable`; anything unexpected is `internal`. Show `message`; show `detail` only in the trace/debug panel.

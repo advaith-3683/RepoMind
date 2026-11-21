@@ -6,7 +6,7 @@ from .agent.fast import run_fast
 from .auth import ANON_USER_ID
 from .guardrails.sandbox import resolve_in_repo
 from .hitl.patching import apply_edits, make_diff
-from .agent.llm import build_llm
+from .agent.llm import LLMError, build_llm, is_rate_limit
 from .agent.loop import run_agent
 from .agent.state import EvidenceStore
 from .agent.tools import RepoTools
@@ -93,6 +93,13 @@ def stream_answer(repo: dict, question: str, mode: str | None = None, user_id: s
     except GuardrailViolation as e:
         status = "error"
         yield emit({"type": "error", "code": e.code, "message": e.message})
+    except LLMError as e:
+        status = "error"
+        limited = is_rate_limit(e) or e.status in (413, 429)
+        yield emit({"type": "error", "code": "rate_limited" if limited else "llm_unavailable",
+                    "message": ("The language model is rate-limited right now. Wait a minute and ask again."
+                                if limited else "The language model is unavailable right now. Try again shortly."),
+                    "detail": str(e)[:200]})
     except Exception as e:  # noqa: BLE001
         status = "error"
         yield emit({"type": "error", "code": "internal", "message": "Something went wrong answering that.",
