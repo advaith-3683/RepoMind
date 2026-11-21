@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from ..guardrails.errors import GuardrailViolation
+from ..clone_diagnostics import diagnostic_scope, log_failure, log_unreported
 
 GITHUB_RE = re.compile(r"^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 
@@ -34,6 +35,18 @@ def _dir_size_mb(root: Path) -> float:
 
 def clone_repo(url: str, dest: Path, max_repo_mb: int, timeout: int = 120) -> str:
     """Shallow-clone a public GitHub repo. Returns the HEAD commit sha."""
+    with diagnostic_scope("clone", dest.name) as trace:
+        before = trace.failures
+        try:
+            return _clone_repo(url, dest, max_repo_mb, timeout, trace)
+        except Exception as exc:
+            log_unreported(trace, before, "filesystem_error" if isinstance(exc, OSError) else "unexpected_error",
+                           errno=exc.errno if isinstance(exc, OSError) else None)
+            raise
+
+
+def _clone_repo(url: str, dest: Path, max_repo_mb: int, timeout: int, trace) -> str:
+    before = trace.failures
     owner, repo = parse_github_url(url)
     # Shared transport hardening, without invoking restoration or indexing.
     from ..repositories import _git, _public_repository
@@ -46,11 +59,14 @@ def clone_repo(url: str, dest: Path, max_repo_mb: int, timeout: int = 120) -> st
         _public_repository(owner, repo, deadline)
         _git(dest, ["clone", "--template=", "--depth", "1", "--single-branch", "--", canonical, "."],
              max_bytes, deadline)
-    except Exception:
+    except Exception as exc:
+        log_unreported(trace, before, "filesystem_error" if isinstance(exc, OSError) else "unexpected_error",
+                       errno=exc.errno if isinstance(exc, OSError) else None)
         shutil.rmtree(dest, ignore_errors=True)
         raise GuardrailViolation("clone_failed", "Could not clone that repository (is it public?).") from None
 
     if _dir_size_mb(dest) > max_repo_mb:
+        log_failure("disk_limit", max_bytes=max_bytes)
         shutil.rmtree(dest, ignore_errors=True)
         raise GuardrailViolation("repo_too_large", f"Repository is larger than {max_repo_mb} MB.")
 

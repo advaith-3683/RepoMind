@@ -11,6 +11,7 @@ from .chunker import Chunk, chunk_file, detect_language
 from .clone import clone_repo
 from .embed import Embedder, GeminiEmbedder
 from ..repositories import _remove_owned, repository_lock
+from ..clone_diagnostics import diagnostic_scope, log_failure
 
 SKIP_DIRS = {
     ".git", "node_modules", "dist", "build", "venv", ".venv", "__pycache__", ".next", "vendor",
@@ -51,6 +52,11 @@ def build_chunks(root: Path, settings: Settings) -> tuple[list[Chunk], int]:
 
 def ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
     """Serialize ingestion with snapshot readers/restorers; never reindex a ready row."""
+    with diagnostic_scope("ingestion", repo_id):
+        _locked_ingestion(repo_id, url, embedder)
+
+
+def _locked_ingestion(repo_id, url: str, embedder: Embedder | None = None) -> None:
     try:
         with repository_lock(repo_id):
             current = store.get_repo(repo_id)
@@ -90,4 +96,6 @@ def _ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
     except GuardrailViolation as e:
         store.update_repo(repo_id, status="failed", error=e.message)
     except Exception as e:  # noqa: BLE001
-        store.update_repo(repo_id, status="failed", error=str(e)[:500])
+        log_failure("filesystem_error" if isinstance(e, OSError) else "unexpected_error",
+                    errno=e.errno if isinstance(e, OSError) else None)
+        store.update_repo(repo_id, status="failed", error="Indexing failed. Please try again.")

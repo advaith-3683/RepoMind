@@ -10,7 +10,7 @@ import stat
 import subprocess
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
@@ -18,6 +18,7 @@ import httpx
 
 from . import store
 from .config import get_settings
+from .clone_diagnostics import diagnostic_scope, log_failure, log_unreported
 from .guardrails.errors import GuardrailViolation
 from .ingestion.clone import parse_github_url
 
@@ -62,7 +63,8 @@ def repository_lock(repo_id, settings=None, timeout=None):
         if _linked(lock_path):
             raise _unavailable()
         fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        log_failure("filesystem_error", errno=exc.errno if isinstance(exc, OSError) else None)
         raise _unavailable() from None
     with os.fdopen(fd, "r+b") as handle:
         if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
@@ -83,6 +85,7 @@ def repository_lock(repo_id, settings=None, timeout=None):
                 break
             except OSError:
                 if time.monotonic() >= deadline:
+                    log_failure("lock_timeout")
                     raise GuardrailViolation("repo_not_ready", "Repository files are busy. Please retry.") from None
                 time.sleep(0.05)
         try:
@@ -96,20 +99,47 @@ def repository_lock(repo_id, settings=None, timeout=None):
 
 
 def _public_repository(owner, name, deadline):
+    with diagnostic_scope("github_validation") as trace:
+        before = trace.failures
+        try:
+            return _validate_public_repository(owner, name, deadline)
+        except httpx.TimeoutException:
+            log_failure("clone_timeout")
+            raise
+        except httpx.HTTPError:
+            log_failure("github_network_error")
+            raise
+        except ValueError:
+            log_unreported(trace, before, "github_invalid_response")
+            raise
+
+
+def _validate_public_repository(owner, name, deadline):
     # No netrc, proxy environment, auth headers, cookies, or redirects.
     with httpx.Client(trust_env=False, follow_redirects=False, timeout=10.0) as client:
         with client.stream("GET", f"https://api.github.com/repos/{owner}/{name}",
                            headers={"Accept": "application/vnd.github+json"}) as response:
             if response.status_code != 200:
+                remaining = response.headers.get("x-ratelimit-remaining", "")
+                remaining = int(remaining) if remaining.isascii() and remaining.isdecimal() and len(remaining) <= 10 else None
+                limited = response.status_code == 429 or (response.status_code == 403 and remaining == 0)
+                log_failure("github_rate_limited" if limited else "github_http_error",
+                            http_status=response.status_code, rate_remaining=remaining)
                 raise _unavailable()
             body = bytearray()
             for block in response.iter_bytes():
                 body.extend(block)
-                if len(body) > 1024 * 1024 or time.monotonic() >= deadline:
+                if len(body) > 1024 * 1024:
+                    log_failure("github_invalid_response", response_bytes=len(body))
+                    raise _unavailable()
+                if time.monotonic() >= deadline:
+                    log_failure("clone_timeout")
                     raise _unavailable()
     data = json.loads(body)
     if (not isinstance(data, dict) or data.get("private") is not False or data.get("visibility") != "public"
             or str(data.get("full_name", "")).lower() != f"{owner}/{name}".lower()):
+        log_failure("github_not_public" if isinstance(data, dict) and data.get("private") is True
+                    else "github_invalid_response", http_status=200)
         raise _unavailable()
 
 
@@ -132,6 +162,7 @@ def _usage(root):
             p = Path(directory) / name
             count += 1
             if count > MAX_ENTRIES:
+                log_failure("entry_limit", entry_count=count, max_entries=MAX_ENTRIES)
                 raise _unavailable()
             try:
                 if not _linked(p) and p.is_file():
@@ -143,8 +174,16 @@ def _usage(root):
 
 
 def _limits(root, max_bytes, deadline):
-    if (time.monotonic() >= deadline or _usage(root) > max_bytes * 4
-            or shutil.disk_usage(root.parent).free < MIN_FREE_BYTES):
+    if time.monotonic() >= deadline:
+        log_failure("clone_timeout")
+        raise _unavailable()
+    used = _usage(root)
+    if used > max_bytes * 4:
+        log_failure("disk_limit", used_bytes=used, max_bytes=max_bytes * 4)
+        raise _unavailable()
+    free = shutil.disk_usage(root.parent).free
+    if free < MIN_FREE_BYTES:
+        log_failure("disk_limit", free_bytes=free, min_free_bytes=MIN_FREE_BYTES)
         raise _unavailable()
 
 
@@ -162,6 +201,21 @@ def _stop(process):
 
 
 def _git(root, args, max_bytes, deadline):
+    phase = {"clone": "git_clone", "fetch": "git_fetch", "checkout": "git_checkout",
+             "init": "git_init", "rev-parse": "git_verify", "fsck": "git_verify", "ls-tree": "git_verify"}.get(args[0] if args else None, "git_execution")
+    with diagnostic_scope(phase) as trace:
+        before = trace.failures
+        try:
+            return _run_git(root, args, max_bytes, deadline)
+        except subprocess.TimeoutExpired:
+            log_unreported(trace, before, "clone_timeout")
+            raise
+        except OSError as exc:
+            log_unreported(trace, before, "filesystem_error", errno=exc.errno)
+            raise
+
+
+def _run_git(root, args, max_bytes, deadline):
     command = ["git", "-c", "credential.helper=", "-c", "credential.interactive=false",
                "-c", "http.extraHeader=", "-c", "http.proxy=", "-c", "http.followRedirects=false",
                "-c", "http.cookieFile=", "-c", "http.saveCookies=false", "-c", "http.emptyAuth=false",
@@ -172,22 +226,30 @@ def _git(root, args, max_bytes, deadline):
                "-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true", *args]
     _limits(root, max_bytes, deadline)
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
-        process = subprocess.Popen(command, cwd=root, env=_git_environment(), stdin=subprocess.DEVNULL,
-                                   stdout=out, stderr=err, start_new_session=os.name != "nt")
+        try:
+            process = subprocess.Popen(command, cwd=root, env=_git_environment(), stdin=subprocess.DEVNULL,
+                                       stdout=out, stderr=err, start_new_session=os.name != "nt")
+        except FileNotFoundError as exc:
+            log_failure("git_not_found" if exc.filename in {None, "git", b"git"} else "filesystem_error", errno=exc.errno)
+            raise
         try:
             while process.poll() is None:
                 _limits(root, max_bytes, deadline)
                 if os.fstat(out.fileno()).st_size + os.fstat(err.fileno()).st_size > 8 * 1024 * 1024:
+                    log_failure("output_limit", output_bytes=os.fstat(out.fileno()).st_size + os.fstat(err.fileno()).st_size)
                     raise _unavailable()
                 time.sleep(0.05)
             _limits(root, max_bytes, deadline)
             if os.fstat(out.fileno()).st_size + os.fstat(err.fileno()).st_size > 8 * 1024 * 1024:
+                log_failure("output_limit", output_bytes=os.fstat(out.fileno()).st_size + os.fstat(err.fileno()).st_size)
                 raise _unavailable()
             if process.returncode:
+                log_failure("git_execution_failed", returncode=process.returncode)
                 raise _unavailable()
             out.seek(0)
             result = out.read(8 * 1024 * 1024 + 1)
             if len(result) > 8 * 1024 * 1024:
+                log_failure("output_limit", output_bytes=len(result))
                 raise _unavailable()
             return result
         finally:
@@ -317,6 +379,7 @@ def _restore(repo, dest, max_bytes, deadline):
     published = False
     try:
         if shutil.disk_usage(base).free < MIN_FREE_BYTES + max_bytes * 4:
+            log_failure("disk_limit", min_free_bytes=MIN_FREE_BYTES + max_bytes * 4)
             raise _unavailable()
         _git(stage, ["init", "--template="], max_bytes, deadline)
         _git(stage, ["fetch", "--depth=1", "--no-tags", "--no-recurse-submodules", "--",
@@ -347,6 +410,15 @@ def _restore(repo, dest, max_bytes, deadline):
 @contextmanager
 def repository_snapshot(repo_id, settings=None):
     """Yield a verified snapshot under lock; preserve all existing database state."""
+    with ExitStack() as stack:
+        # Limit ContextVar lifetime to preparation: SSE can resume on a new worker context.
+        with diagnostic_scope("restoration", repo_id):
+            dest = stack.enter_context(_repository_snapshot(repo_id, settings))
+        yield dest
+
+
+@contextmanager
+def _repository_snapshot(repo_id, settings=None):
     settings = settings or get_settings()
     with repository_lock(repo_id, settings) as dest:
         repo = store.get_repo(repo_id)
@@ -365,6 +437,8 @@ def repository_snapshot(repo_id, settings=None):
             max_bytes = settings.max_repo_mb * 1024 * 1024
             if not _checkout_valid(dest, repo["commit_sha"], max_bytes, deadline):
                 _restore(repo, dest, max_bytes, deadline)
-        except (OSError, ValueError, RuntimeError, configparser.Error, httpx.HTTPError, subprocess.SubprocessError):
+        except (OSError, ValueError, RuntimeError, configparser.Error, httpx.HTTPError, subprocess.SubprocessError) as exc:
+            if isinstance(exc, OSError):
+                log_failure("filesystem_error", errno=exc.errno)
             raise _unavailable() from None
         yield dest
