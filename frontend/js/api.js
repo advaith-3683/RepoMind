@@ -38,6 +38,7 @@ async function backendFetch(path, { method = "GET", body, signal, accessToken } 
 }
 
 async function parseResponse(response) {
+  if (response.status === 204) return null;
   let data;
   try { data = await response.json(); } catch {
     throw new ApiError(`The repository service returned an invalid response (HTTP ${response.status}).`, "invalid_response", response.status);

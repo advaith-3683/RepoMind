@@ -12,6 +12,9 @@
   let mode = "ready";
   let posts = 0;
   let refreshes = 0;
+  let deletes = 0;
+  let deleteStatus = 204;
+  const deleted = new Set();
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   tab.on("pageerror", (error) => errors.push(error.message));
   await tab.route(origin + "/config", (route) => route.fulfill({ json: {
@@ -30,6 +33,18 @@
   await tab.route(origin + "/repos**", (route) => {
     const request = route.request();
     assert(request.headers().authorization === "Bearer fake-layout-access", "Wrong bearer token used");
+    if (request.method() === "DELETE") {
+      deletes += 1;
+      assert(!request.headers()["x-github-token"], "Deletion sent the GitHub provider token");
+      if (deleteStatus === 204) {
+        deleted.add(decodeURIComponent(new URL(request.url()).pathname.split("/").pop()));
+        return route.fulfill({ status: 204 });
+      }
+      return route.fulfill({ status: deleteStatus, json: { error: {
+        code: deleteStatus === 409 ? "repo_not_ready" : deleteStatus === 403 ? "forbidden" : "not_found",
+        message: "Server says <b>removal denied</b>.",
+      } } });
+    }
     if (request.method() === "POST") {
       posts += 1;
       assert(request.postDataJSON().url === "https://github.com/fixture/new", "Unexpected repository body");
@@ -40,7 +55,7 @@
     if (mode === "unauthorized") return route.fulfill({ status: 401, json: { error: { code: "unauthorized", message: "Please sign in." } } });
     const path = new URL(request.url()).pathname;
     if (path !== "/repos") return route.fulfill({ json: repo(path.split("/").pop()) });
-    return route.fulfill({ json: mode === "empty" ? [] : mode === "indexing" ? [repo("pending", "indexing")] : [repo("repository"), repo("alternate")] });
+    return route.fulfill({ json: (mode === "empty" ? [] : mode === "indexing" ? [repo("pending", "indexing")] : [repo("repository"), repo("alternate")]).filter((item) => !deleted.has(item.id)) });
   });
 
   async function signIn() {
@@ -128,6 +143,55 @@
     assert(await tab.locator("[data-selected-name]").textContent() === "fixture/alternate", "Mobile selection did not synchronize");
     await tab.reload(); await waitState("ready");
     assert(await tab.locator("[data-selected-name]").textContent() === "fixture/alternate", "Selection did not persist");
+
+    for (const width of [1440, 375]) {
+      await tab.setViewportSize({ width, height: 900 });
+      deleted.clear();
+      await tab.evaluate(() => localStorage.removeItem("repomind.selectedRepoId"));
+      await tab.reload(); await waitState("ready");
+      if (width < 900) await tab.locator("[data-open-repos]").click();
+      const list = tab.locator(width > 900 ? ".repositories" : ".mobile-picker");
+      const remove = list.getByRole("button", { name: "Remove fixture/repository", exact: true });
+      const before = deletes;
+      tab.once("dialog", async (dialog) => {
+        assert(dialog.message() === "Remove fixture/repository? This deletes its index and history.", "Incorrect confirmation copy");
+        await dialog.dismiss();
+      });
+      await remove.focus(); await tab.keyboard.press("Enter");
+      assert(deletes === before, "Cancel sent a delete request");
+      assert(await remove.isVisible(), "Cancel removed the repository");
+
+      for (const status of [409, 403, 404]) {
+        deleteStatus = status;
+        tab.once("dialog", (dialog) => dialog.accept());
+        await remove.focus(); await tab.keyboard.press("Space");
+        const message = status === 409 ? "This repository is being indexed. Try again in a minute." : "Server says <b>removal denied</b>.";
+        await list.locator(".repo-removal-message").filter({ hasText: message }).waitFor();
+        assert(await remove.isVisible(), "Failed deletion removed the repository");
+        assert(await list.locator(".repo-removal-message b").count() === 0, "Server error was interpreted as HTML");
+      }
+
+      deleteStatus = 204;
+      // Removing an unselected repo keeps the selected workspace intact.
+      tab.once("dialog", (dialog) => dialog.accept());
+      await list.getByRole("button", { name: "Remove fixture/alternate", exact: true }).click();
+      await list.getByRole("button", { name: "Remove fixture/alternate", exact: true }).waitFor({ state: "detached" });
+      await waitState("ready");
+      assert(await tab.locator("[data-selected-name]").textContent() === "fixture/repository", "Unselected removal cleared selection");
+      deleted.clear();
+      await tab.reload(); await waitState("ready");
+      if (width < 900) await tab.locator("[data-open-repos]").click();
+      tab.once("dialog", (dialog) => dialog.accept());
+      await remove.focus(); await tab.keyboard.press("Enter");
+      await remove.waitFor({ state: "detached" }); await waitState("empty");
+      assert(await tab.evaluate(() => localStorage.getItem("repomind.selectedRepoId") === null), "Removed selection persisted");
+      assert(await tab.locator("[data-selected-name]").textContent() === "Select a repository", "Selected repository name remained");
+      assert(await tab.locator('[data-remove-repo-id="repository"]').count() === 0, "Desktop/mobile lists diverged");
+      assert(await tab.locator('[data-remove-repo-id="alternate"]').count() === 2, "Remaining repository disappeared");
+      assert(await list.getByRole("button", { name: "Remove fixture/alternate", exact: true }).evaluate((node) => node === document.activeElement), "Focus was lost after removal");
+      assert(await tab.locator("#question").isDisabled(), "Removed repo still allowed questions");
+    }
+    deleted.clear();
 
     mode = "indexing";
     await tab.reload(); await waitState("empty");

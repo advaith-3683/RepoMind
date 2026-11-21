@@ -125,6 +125,27 @@ test("restored sessions use only the Supabase token for repository requests", as
   assert.ok(!JSON.stringify(requests).includes("github-provider-test"));
 });
 
+test("repository deletion sends normal auth and accepts an empty 204 response", async () => {
+  storeSession(); const { auth } = instance(); await auth.initialize();
+  handler = (r) => r.url.pathname === "/repos/remove-me" ? new Response(null, { status: 204 }) : null;
+  assert.equal(await repositoryRequest("/repos/remove-me", { method: "DELETE" }), null);
+  const request = requests.at(-1);
+  assert.equal(request.method, "DELETE");
+  assert.equal(request.headers.Authorization, "Bearer supabase-access-test");
+  assert.equal(request.headers["X-GitHub-Token"], undefined);
+  assert.equal(request.body, undefined);
+});
+
+test("repository deletion preserves server error status, code and message", async () => {
+  storeSession(); const { auth } = instance(); await auth.initialize();
+  for (const [status, code] of [[409, "repo_not_ready"], [403, "forbidden"], [404, "not_found"]]) {
+    handler = () => json({ error: { code, message: "Server removal message" } }, status);
+    await assert.rejects(repositoryRequest("/repos/remove-me", { method: "DELETE" }), {
+      status, code, message: "Server removal message",
+    });
+  }
+});
+
 test("expired sessions refresh, rotate tokens, and preserve the separate provider token", async () => {
   storeSession({ expires_at: Date.now() - 1 }); const { auth, state } = instance(); await auth.initialize();
   assert.equal(state().phase, "signed-in");

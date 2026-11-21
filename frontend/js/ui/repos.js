@@ -27,6 +27,7 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
   const picker = document.querySelector(".mobile-picker");
   let repos = [];
   let selectedId = null;
+  let selectionCleared = false;
   let loading = true;
   let adding = false;
   let authRequired = false;
@@ -35,6 +36,8 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
   let controller = new AbortController();
   const polls = new Map();
   const pollErrors = new Map();
+  const removals = new Set();
+  const removalErrors = new Map();
   let listError = null;
   let savedId = null;
   let enabled = autoLoad;
@@ -49,6 +52,7 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
   }
 
   function reconcileSelection() {
+    if (selectionCleared && selectedId === null) return;
     if (!repos.some((repo) => repo.id === selectedId && repo.status === "ready")) {
       selectedId = repos.find((repo) => repo.id === savedId && repo.status === "ready")?.id
         || repos.find((repo) => repo.status === "ready")?.id || null;
@@ -113,6 +117,7 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
     renderMessages();
     const focused = document.activeElement;
     const focusId = focused?.dataset.repoId;
+    const focusRemoveId = focused?.dataset.removeRepoId;
     const focusList = lists.find((list) => list.contains(focused));
     lists.forEach((list) => {
       const expandedFailures = new Set([...list.querySelectorAll(".repo-failure[open]")]
@@ -129,13 +134,25 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
           element("span", `repo-status status-${repo.status}`, repo.status[0].toUpperCase() + repo.status.slice(1)));
         button.addEventListener("click", () => {
           selectedId = repo.id;
+          selectionCleared = false;
           savedId = selectedId;
           persist();
           render();
           picker.open = false;
           if (window.matchMedia("(max-width: 900px)").matches) picker.querySelector("summary").focus();
         });
-        item.append(button);
+        const row = element("div", "repo-row");
+        const removeButton = element("button", "repo-remove", "✕");
+        removeButton.type = "button";
+        removeButton.dataset.removeRepoId = repo.id;
+        removeButton.setAttribute("aria-label", `Remove ${repo.name}`);
+        removeButton.disabled = loading || authRequired || removals.has(repo.id) || Date.now() < cooldownUntil;
+        removeButton.addEventListener("click", () => remove(repo));
+        row.append(button, removeButton);
+        item.append(row);
+        const removalMessage = element("p", "repo-message repo-removal-message", removalErrors.get(repo.id) || "");
+        removalMessage.setAttribute("role", "status");
+        item.append(removalMessage);
         if (repo.status === "failed") {
           const details = element("details", "repo-failure");
           details.open = expandedFailures.has(repo.id);
@@ -165,11 +182,59 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
     });
     if (focusId && focusList) [...focusList.querySelectorAll("[data-repo-id]")]
       .find((node) => node.dataset.repoId === focusId)?.focus();
+    if (focusRemoveId && focusList) {
+      const target = [...focusList.querySelectorAll("[data-remove-repo-id]")]
+        .find((node) => node.dataset.removeRepoId === focusRemoveId);
+      if (target) target.focus();
+      else (focusList.querySelector(".repo-remove:not(:disabled)")
+        || forms[lists.indexOf(focusList)]?.querySelector("input"))?.focus();
+    }
     forms.forEach((form) => {
       form.querySelector("button").disabled = loading || adding || authRequired || Date.now() < cooldownUntil;
       form.querySelector("input").disabled = loading || adding || authRequired;
       form.querySelector("button").textContent = adding ? "Adding…" : "+ Add repository";
     });
+  }
+
+  async function remove(repo) {
+    if (!enabled || loading || authRequired || removals.has(repo.id) || Date.now() < cooldownUntil) return;
+    if (!window.confirm(`Remove ${repo.name}? This deletes its index and history.`)) return;
+    const focusList = lists.find((list) => list.contains(document.activeElement));
+    const version = generation;
+    removals.add(repo.id);
+    removalErrors.delete(repo.id);
+    render();
+    try {
+      await repositoryRequest(`/repos/${encodeURIComponent(repo.id)}`, { method: "DELETE", signal: controller.signal });
+      if (version !== generation) return;
+      repos = repos.filter((item) => item.id !== repo.id);
+      clearTimeout(polls.get(repo.id));
+      polls.delete(repo.id);
+      pollErrors.delete(repo.id);
+      if (selectedId === repo.id) {
+        selectedId = null;
+        savedId = null;
+        selectionCleared = true;
+        persist();
+      }
+    } catch (error) {
+      if (version === generation && error.name !== "AbortError") {
+        showError(error);
+        removalErrors.set(repo.id, error.status === 409 && error.code === "repo_not_ready"
+          ? "This repository is being indexed. Try again in a minute." : error.message);
+      }
+    } finally {
+      if (version === generation) {
+        removals.delete(repo.id);
+        render();
+        if (focusList && document.activeElement === document.body) {
+          const target = [...focusList.querySelectorAll("[data-remove-repo-id]")]
+            .find((node) => node.dataset.removeRepoId === repo.id);
+          (target || focusList.querySelector(".repo-remove:not(:disabled)")
+            || forms[lists.indexOf(focusList)]?.querySelector("input"))?.focus();
+        }
+      }
+    }
   }
 
   function schedule(id) {
@@ -207,6 +272,8 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
     loading = true;
     listError = null;
     pollErrors.clear();
+    removalErrors.clear();
+    removals.clear();
     render();
     try {
       const data = await repositoryRequest("/repos", { signal: controller.signal });
@@ -293,12 +360,15 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
       controller.abort();
       repos = [];
       selectedId = null;
+      selectionCleared = false;
       loading = false;
       adding = false;
       authRequired = false;
       listError = null;
       cooldownUntil = 0;
       pollErrors.clear();
+      removalErrors.clear();
+      removals.clear();
       forms.forEach((form) => {
         form.reset();
         form.querySelector("[data-form-message]").textContent = "";

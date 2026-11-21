@@ -113,6 +113,12 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 [data-repo-list] .repo { padding: 0; gap: 0; }
 .repo-select { display: flex; flex-direction: column; gap: 6px; padding: 12px; width: 100%; background: transparent; text-align: left; cursor: pointer; }
 .repo-select:disabled { cursor: default; }
+.repo-row { display: flex; align-items: center; }
+.repo-row .repo-select { flex: 1; min-width: 0; }
+.repo-remove { flex-shrink: 0; padding: 10px; margin-right: 2px; background: transparent; color: var(--muted); cursor: pointer; }
+.repo-remove:hover { color: var(--text); background: var(--chip); }
+.repo-remove:disabled { opacity: .6; cursor: default; }
+.repo-removal-message:not(:empty) { padding: 0 12px 12px; }
 .repo-name, [data-repo-context], [data-selected-name], [data-repo-composer] { overflow-wrap: anywhere; }
 [data-repo-context] { min-width: 0; }
 .repo-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
