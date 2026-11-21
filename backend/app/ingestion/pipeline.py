@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,4 +99,16 @@ def _ingest_repo(repo_id, url: str, embedder: Embedder | None = None) -> None:
     except Exception as e:  # noqa: BLE001
         log_failure("filesystem_error" if isinstance(e, OSError) else "unexpected_error",
                     errno=e.errno if isinstance(e, OSError) else None)
+        _log_error_kind(e)
         store.update_repo(repo_id, status="failed", error="Indexing failed. Please try again.")
+
+
+def _log_error_kind(exc: Exception) -> None:
+    """Log ONLY the exception class name plus a numeric HTTP code / 5-char SQLSTATE if present.
+    Never the message or traceback (those can contain URLs, keys or repository text)."""
+    code = getattr(exc, "code", None)
+    code = code if type(code) is int and 0 <= code < 1000 else None
+    state = getattr(exc, "sqlstate", None)
+    state = state if isinstance(state, str) and len(state) == 5 and state.isalnum() else None
+    logging.getLogger(__name__).warning("ingestion_error_kind type=%s code=%s sqlstate=%s",
+                                        type(exc).__name__[:60], code, state)

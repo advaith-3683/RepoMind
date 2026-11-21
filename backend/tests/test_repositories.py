@@ -543,3 +543,14 @@ def test_server_token_never_reaches_git_or_logs(monkeypatch, caplog):
         snapshots._public_repository("o", "r", time.monotonic() + 10)
     assert "ghp_servertoken" not in caplog.text and "ghp_servertoken" not in exc.value.message
     assert "github_rate_limited" in caplog.text
+
+
+def test_ingestion_failure_logs_only_error_kind(monkeypatch, caplog):
+    from app.ingestion import pipeline
+
+    class Boom(Exception):
+        code = 429
+    secret = "SECRET-IN-MESSAGE"
+    caplog.set_level("WARNING")
+    pipeline._log_error_kind(Boom(secret))
+    assert "type=Boom code=429" in caplog.text and secret not in caplog.text
