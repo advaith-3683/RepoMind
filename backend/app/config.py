@@ -42,6 +42,9 @@ class Settings(BaseSettings):
 
     # --- GitHub publishing (PRs / issues) ---
     github_api_url: str = "https://api.github.com"
+    # Optional read-only token (fine-grained PAT, NO permissions) used ONLY for the public-repo metadata
+    # check against api.github.com. Raises the REST limit from 60/h per shared IP to 5000/h. Never sent to git.
+    github_api_token: str = ""
 
     # --- storage / ingestion limits ---
     repos_dir: str = "./data/repos"

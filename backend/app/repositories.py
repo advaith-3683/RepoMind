@@ -115,10 +115,15 @@ def _public_repository(owner, name, deadline):
 
 
 def _validate_public_repository(owner, name, deadline):
-    # No netrc, proxy environment, auth headers, cookies, or redirects.
+    # No netrc, proxy environment, cookies, or redirects. The optional server-side read-only token is
+    # sent only to this fixed api.github.com URL (never to git, never user-supplied, never logged).
+    headers = {"Accept": "application/vnd.github+json"}
+    token = (get_settings().github_api_token or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     with httpx.Client(trust_env=False, follow_redirects=False, timeout=10.0) as client:
         with client.stream("GET", f"https://api.github.com/repos/{owner}/{name}",
-                           headers={"Accept": "application/vnd.github+json"}) as response:
+                           headers=headers) as response:
             if response.status_code != 200:
                 remaining = response.headers.get("x-ratelimit-remaining", "")
                 remaining = int(remaining) if remaining.isascii() and remaining.isdecimal() and len(remaining) <= 10 else None

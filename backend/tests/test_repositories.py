@@ -505,3 +505,41 @@ def test_agent_reads_under_snapshot_lock(indexed, monkeypatch):
     events = list(service.stream_answer(indexed.row, "question", "agent"))
     assert [e["type"] for e in events] == ["start", "answer", "done"]
     assert indexed.row == indexed.original
+
+
+def _public_client(monkeypatch, handler):
+    real_client = httpx.Client
+    monkeypatch.setattr(snapshots.httpx, "Client", lambda **kwargs: real_client(
+        **kwargs, transport=httpx.MockTransport(handler)))
+
+
+def test_public_check_sends_server_token_only_to_github_api(monkeypatch):
+    monkeypatch.setattr(snapshots.get_settings(), "github_api_token", "  ghp_servertoken  ")
+    seen = []
+
+    def handler(req):
+        seen.append(req)
+        return httpx.Response(200, json={"private": False, "visibility": "public", "full_name": "o/r"})
+    _public_client(monkeypatch, handler)
+    snapshots._public_repository("o", "r", time.monotonic() + 10)
+    assert seen[0].headers["authorization"] == "Bearer ghp_servertoken"
+    assert seen[0].url.host == "api.github.com" and "cookie" not in seen[0].headers
+
+
+def test_public_check_without_server_token_is_anonymous(monkeypatch):
+    monkeypatch.setattr(snapshots.get_settings(), "github_api_token", "")
+    _public_client(monkeypatch, lambda req: (
+        httpx.Response(200, json={"private": False, "visibility": "public", "full_name": "o/r"})
+        if "authorization" not in req.headers else httpx.Response(500)))
+    snapshots._public_repository("o", "r", time.monotonic() + 10)
+
+
+def test_server_token_never_reaches_git_or_logs(monkeypatch, caplog):
+    monkeypatch.setattr(snapshots.get_settings(), "github_api_token", "ghp_servertoken")
+    monkeypatch.setenv("GITHUB_API_TOKEN", "ghp_servertoken")
+    assert "GITHUB_API_TOKEN" not in snapshots._git_environment()
+    _public_client(monkeypatch, lambda req: httpx.Response(403, headers={"x-ratelimit-remaining": "0"}))
+    with caplog.at_level("WARNING"), pytest.raises(GuardrailViolation) as exc:
+        snapshots._public_repository("o", "r", time.monotonic() + 10)
+    assert "ghp_servertoken" not in caplog.text and "ghp_servertoken" not in exc.value.message
+    assert "github_rate_limited" in caplog.text
