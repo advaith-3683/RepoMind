@@ -277,3 +277,17 @@ def test_other_400_still_not_retried():
     with pytest.raises(LLMError):
         make(handler).complete("s", [])
     assert n["c"] == 1
+
+
+def test_reasoning_effort_sent_only_for_gpt_oss():
+    seen = []
+
+    def handler(req):
+        seen.append(json.loads(req.content))
+        return ok()
+
+    OpenAICompatLLM("https://x/v1", "K", "openai/gpt-oss-120b", reasoning_effort="low",
+                    client=httpx.Client(transport=httpx.MockTransport(handler))).complete("s", [])
+    OpenAICompatLLM("https://x/v1", "K", "other/model", reasoning_effort="low",
+                    client=httpx.Client(transport=httpx.MockTransport(handler))).complete("s", [])
+    assert seen[0]["reasoning_effort"] == "low" and "reasoning_effort" not in seen[1]

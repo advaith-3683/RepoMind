@@ -22,7 +22,8 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "openai/gpt-oss-120b"            # verify against the provider's current model list
     llm_json_mode: bool = True                        # response_format=json_object (set false if a model rejects it)
-    llm_max_output_tokens: int = 1500
+    llm_max_output_tokens: int = 2000
+    llm_reasoning_effort: str = "low"                # low|medium|high; only sent for gpt-oss models (empty = provider default)
     gemini_chat_model: str = "gemini-2.5-flash"       # only used when llm_provider="gemini"
 
     # --- optional fallback provider (used on rate limits / 5xx), e.g. OpenRouter ---

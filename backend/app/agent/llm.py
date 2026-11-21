@@ -74,6 +74,7 @@ class OpenAICompatLLM:
         *,
         label: str = "openai_compat",
         json_mode: bool = True,
+        reasoning_effort: str = "",
         max_tokens: int = 1500,
         timeout: float = 60.0,
         max_retries: int = 2,
@@ -84,6 +85,7 @@ class OpenAICompatLLM:
         self.api_key = api_key
         self.model = model
         self.json_mode = json_mode
+        self.reasoning_effort = reasoning_effort if "gpt-oss" in model else ""   # reasoning tokens share max_tokens
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.max_wait_s = max_wait_s     # longer Retry-After than this => treat as quota exhaustion, fail fast
@@ -97,6 +99,8 @@ class OpenAICompatLLM:
             "temperature": 0.2,
             "max_tokens": self.max_tokens,
         }
+        if self.reasoning_effort:
+            body["reasoning_effort"] = self.reasoning_effort
         if self.json_mode:
             body["response_format"] = {"type": "json_object"}
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
@@ -238,12 +242,12 @@ def build_llm(s: Settings) -> LLM:
     else:
         chain.append(OpenAICompatLLM(
             s.llm_base_url, s.llm_api_key, s.llm_model, label="primary",
-            json_mode=s.llm_json_mode, max_tokens=s.llm_max_output_tokens,
+            json_mode=s.llm_json_mode, reasoning_effort=s.llm_reasoning_effort, max_tokens=s.llm_max_output_tokens,
         ))
     if s.llm_fallback_api_key and s.llm_fallback_model:
         chain.append(OpenAICompatLLM(
             s.llm_fallback_base_url, s.llm_fallback_api_key, s.llm_fallback_model, label="fallback",
-            json_mode=s.llm_json_mode, max_tokens=s.llm_max_output_tokens,
+            json_mode=s.llm_json_mode, reasoning_effort=s.llm_reasoning_effort, max_tokens=s.llm_max_output_tokens,
         ))
     llm: LLM = chain[0] if len(chain) == 1 else FallbackLLM(chain)
     if s.llm_cache in ("readwrite", "replay"):
