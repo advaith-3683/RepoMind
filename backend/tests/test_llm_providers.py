@@ -291,3 +291,21 @@ def test_reasoning_effort_sent_only_for_gpt_oss():
     OpenAICompatLLM("https://x/v1", "K", "other/model", reasoning_effort="low",
                     client=httpx.Client(transport=httpx.MockTransport(handler))).complete("s", [])
     assert seen[0]["reasoning_effort"] == "low" and "reasoning_effort" not in seen[1]
+
+
+def test_tool_use_failed_is_translated_to_json_action():
+    def handler(req):
+        return httpx.Response(400, json={"error": {"code": "tool_use_failed", "message": "Tool choice is none, but model called a tool",
+            "failed_generation": '{"name": "repo_browser.search_code", "arguments": {"query": "authenticate", "k": 5}}'}})
+
+    res = make(handler).complete("s", [])
+    act = parse_action(res.text)
+    assert act.name == "search_code" and act.args == {"query": "authenticate", "k": 5}
+
+
+def test_tool_use_failed_unparseable_still_raises():
+    def handler(req):
+        return httpx.Response(400, json={"error": {"code": "tool_use_failed", "failed_generation": ""}})
+
+    with pytest.raises(LLMError):
+        make(handler).complete("s", [])

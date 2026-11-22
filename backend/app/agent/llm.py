@@ -9,6 +9,7 @@ a scripted fake and production composes:
   * CachingLLM       - record/replay on disk so reruns (evals!) cost zero API calls
 
 NOTE: verify the google-genai call shape / model names against current docs."""
+import json
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -62,6 +63,22 @@ def _retry_after(r: httpx.Response) -> float | None:
     try:
         return float(r.headers.get("retry-after", ""))
     except ValueError:
+        return None
+
+
+def _rescue_tool_call(r: httpx.Response) -> str | None:
+    """Groq rejects gpt-oss "native" tool calls (tool_use_failed) but returns the attempted call in
+    failed_generation. Translate {"name": "x.search_code", "arguments": {...}} into our JSON action."""
+    try:
+        gen = r.json()["error"]["failed_generation"]
+        call = json.loads(gen) if isinstance(gen, str) else gen
+        name, args = str(call["name"]).rsplit(".", 1)[-1], call.get("arguments") or {}
+        if isinstance(args, str):
+            args = json.loads(args)
+        if not name or not isinstance(args, dict):
+            return None
+        return json.dumps({"thought": "", "action": name, "args": args})
+    except (ValueError, KeyError, TypeError, AttributeError):
         return None
 
 
@@ -130,6 +147,10 @@ class OpenAICompatLLM:
                     raise LLMError(f"HTTP {r.status_code} from {self.model_id}: {r.text[:200]}", r.status_code)
                 time.sleep(min(2 ** attempt, 5))
                 continue
+            if r.status_code == 400 and "tool_use_failed" in r.text:
+                rescued = _rescue_tool_call(r)   # model emitted a native tool call; our loop uses JSON actions
+                if rescued:
+                    return LLMResult(rescued, 0, 0)
             if r.status_code == 400 and "response_format" in body and "json_validate_failed" in r.text:
                 body.pop("response_format")   # strict JSON mode rejected the output: retry once, loop parser is tolerant
                 continue
