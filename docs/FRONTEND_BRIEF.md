@@ -93,6 +93,8 @@ Focus is trapped inside modals and returned to the trigger on close; Esc does no
 7. **History sidebar section:** `GET /history?repo_id=` for the selected repo; clicking an item loads `GET /traces/{id}` and re-renders its answer and steps read-only.
 
 ## Layout
+Landing uses `/`; the authenticated app uses `/workspace`. Frontend navigation uses `history.pushState` and handles `popstate`; auth guards redirect signed-out workspace visits to `/` and signed-in landing visits to `/workspace`. The OAuth redirect remains `${location.origin}/`: the blocking callback script saves and clears the fragment before authenticated navigation. No hash routes are used. Direct requests/reloads of `/workspace` require the server to serve the existing frontend entry point there; backend routing is owned separately.
+
 Three regions (stack vertically on mobile):
 1. **Sidebar: Repositories.** "Add repository" form (URL input + button, client-side check against `^https://github\.com/[\w.-]+/[\w.-]+/?$`). List of repos with a status badge (`pending`/`cloning`/`indexing` = animated, `ready` = green, `failed` = red with `error` text on hover/expand). Clicking a `ready` repo selects it. Poll `GET /repos/{id}` every 2s for any non-terminal repo; stop on `ready`/`failed`. Persist the selected repo id in `localStorage` (wrap in try/catch).
 2. **Main: Chat.** Question textarea (Enter sends, Shift+Enter newline; 1000-char counter), Send button (disabled while streaming or no ready repo selected, shows a Stop button while streaming that aborts the fetch with `AbortController`). Conversation list: user question bubbles, assistant answer bubbles.

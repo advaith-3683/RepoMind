@@ -2,19 +2,19 @@
 <html lang="en" data-theme="light" data-auth-state="loading">
 <head>
   <meta charset="utf-8" />
-  <title>RepoMind — Workspace</title>
+  <title>RepoMind — Understand your code</title>
   <meta name="referrer" content="no-referrer">
-  <script src="js/oauth-callback.js"></script>
+  <script src="/js/oauth-callback.js"></script>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css">
-  <script src="js/app.js" type="module"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/js/app.js" type="module"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
   <main class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
     <div class="auth-masthead">
-      <a class="auth-brand" href="./" aria-label="RepoMind home">R <span>/</span> M</a>
+      <a class="auth-brand" href="/" data-route aria-label="RepoMind home">R <span>/</span> M</a>
       <p class="auth-edition">Codebase intelligence. Human agency.</p>
     </div>
     <div class="auth-content">
@@ -65,9 +65,9 @@
   </main>
   <div id="app-shell" hidden>
   <header class="topbar">
-    <a class="logo" href="./" aria-label="RepoMind home">R<span>/</span>M</a>
+    <a class="logo" href="/" data-route aria-label="RepoMind home">R<span>/</span>M</a>
     <nav aria-label="Main navigation">
-      <a href="#workspace" aria-current="page">Workspace</a>
+      <a href="/workspace" data-route aria-current="page">Workspace</a>
       <span aria-disabled="true" title="Not available in this static preview">Evaluations</span>
       <span aria-disabled="true" title="Not available in this static preview">Documentation</span>
     </nav>
@@ -127,7 +127,7 @@
   </div>
   <section class="mobile-workspace" aria-label="Mobile workspace">
     <header class="mobile-header">
-      <a href="./" class="mobile-brand"><span class="mobile-wide">RepoMind</span><span class="mobile-narrow">R / M</span></a>
+      <a href="/" data-route class="mobile-brand"><span class="mobile-wide">RepoMind</span><span class="mobile-narrow">R / M</span></a>
       <span class="mobile-account-name" data-account data-user-login></span>
       <button type="button" data-account data-sign-out>Sign out</button>
     </header>
@@ -176,7 +176,7 @@
       </form>
     </main>
     <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
-      <a href="#mobile-workspace" aria-current="page">⌂ &nbsp;Workspace</a>
+      <a href="/workspace" data-route aria-current="page">⌂ &nbsp;Workspace</a>
       <button type="button" data-open-repos>▤ &nbsp;Repos</button>
       <button type="button" disabled title="Activity screen is not enabled in this static preview">≡ &nbsp;Activity</button>
     </nav>

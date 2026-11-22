@@ -256,7 +256,7 @@ test("pageshow resets the sign-in phase and re-enables the actual button for ret
   const script = readFileSync(new URL("../js/app.js", import.meta.url), "utf8")
     .replace(/^import .*;\r?\n/gm, "");
   vm.runInNewContext(script, {
-    document, window, createAuth: () => auth,
+    document, window, createAuth: () => auth, createRouter: () => ({ setPhase() {} }),
     initChat: () => ({ setRepository() {} }),
     initRepositories: () => ({ start() {}, stop() {} }), renderWorkspaceState() {},
   });
