@@ -75,6 +75,9 @@ test("approve sends only a decision, uses final server payload/diff, and never p
 test("edit preserves path and old text, sends each replacement and shows only recomputed diff", async () => {
   const card = proposal(); button(card.render(), "Edit").click();
   const root = card.render();
+  assert.equal(requests.length, 0, "Entering edit mode must not decide or publish");
+  assert.ok(button(root, "Approve edited version"));
+  assert.ok(root.textContent.includes("This records your edited version as approved. Nothing is published to GitHub until you click Open pull request."));
   const inputs = flatten(root).filter((node) => ["INPUT", "TEXTAREA"].includes(node.tagName));
   inputs.forEach((input, index) => input.input(["New title", "New body", "new first", "new second"][index]));
   reply = () => json({ status: "edited", payload: { ...payload, title: "New title", body: "New body" }, diff: "+recomputed edited\n" });
@@ -85,6 +88,9 @@ test("edit preserves path and old text, sends each replacement and shows only re
   } });
   assert.equal(card.render().dataset.actionStatus, "edited");
   assert.ok(card.render().textContent.includes("+recomputed edited"));
+  assert.equal(requests.length, 1, "Approving edits must only send the decision");
+  assert.equal(requests[0].url, "/actions/action/decision");
+  assert.ok(button(card.render(), "Open pull request"));
 });
 
 test("reject is terminal, clears server payload/diff and never offers publish", async () => {
@@ -126,21 +132,50 @@ test("decision and publish in-flight locks prevent duplicate requests across bot
   finish(json({ status: "published", result: { url: "https://github.com/o/r/pull/7" } })); await publishing;
 });
 
-for (const kind of ["patch", "issue"]) test(`${kind} publishes with provider header and displays success, link and already state`, async () => {
+for (const kind of ["patch", "issue"]) test(`${kind} publishes with provider header and displays success, number and link`, async () => {
   const card = proposal(kind); await button(card.render(), "Approve").click();
-  reply = () => json({ status: "published", already: true, result: { kind, url: `https://github.com/o/r/${kind === "patch" ? "pull" : "issues"}/7`, branch: kind === "patch" ? "repomind/fix-123" : undefined } });
+  reply = () => json({ status: "published", already: false, result: { kind, number: 7, url: `https://github.com/o/r/${kind === "patch" ? "pull" : "issues"}/7`, branch: kind === "patch" ? "repomind/fix-123" : undefined } });
   await button(card.render(), kind === "patch" ? "Open pull request" : "Create issue").click();
   const request = requests.at(-1), root = card.render();
   assert.equal(request.url, "/actions/action/publish"); assert.equal(request.method, "POST");
   assert.equal(request.headers["X-GitHub-Token"], provider); assert.equal(request.headers.Authorization, "Bearer fake-access");
   assert.equal(request.body, undefined); assert.equal(root.dataset.publishState, "published");
   assert.equal(card.statusText(), "Published to GitHub");
-  assert.ok(root.textContent.includes(kind === "patch" ? "Pull request opened" : "Issue created"));
-  assert.ok(root.textContent.includes("already published")); assert.ok(!root.textContent.includes(provider));
+  assert.equal(flatten(root).find((node) => node.tagName === "H2").textContent, kind === "patch" ? "Pull request opened #7" : "Issue created #7");
+  assert.ok(!root.textContent.includes("Already published.")); assert.ok(!root.textContent.includes(provider));
+  assert.equal(button(root, "Open pull request"), undefined);
+  assert.equal(button(root, "Create issue"), undefined);
   const link = flatten(root).find((node) => node.tagName === "A");
+  assert.equal(link.textContent, kind === "patch" ? "View pull request on GitHub" : "View issue on GitHub");
+  assert.equal(link.href, `https://github.com/o/r/${kind === "patch" ? "pull" : "issues"}/7`);
+  assert.equal(link.className, "primary");
   assert.equal(link.target, "_blank"); assert.equal(link.rel, "noopener noreferrer");
   if (kind === "patch") {
     assert.ok(root.textContent.includes("repomind/fix-123")); assert.ok(root.textContent.includes("+server-computed"));
+  }
+});
+
+test("already published wording is shown without inventing a missing result number", async () => {
+  const card = proposal(); await button(card.render(), "Approve").click();
+  reply = () => json({ status: "published", already: true, result: { url: "https://github.com/o/r/pull/7" } });
+  await button(card.render(), "Open pull request").click();
+  const root = card.render();
+  assert.ok(flatten(root).some((node) => node.tagName === "P" && node.textContent === "Already published."));
+  assert.equal(flatten(root).find((node) => node.tagName === "H2").textContent, "Pull request opened");
+  assert.equal(button(root, "Open pull request"), undefined);
+  assert.ok(root.textContent.includes("+server-computed"));
+});
+
+test("unsafe publish result URLs never become links", async () => {
+  for (const url of ["javascript:alert(1)", "https://evil.test/o/r", "https://user:pass@github.com/o/r"]) {
+    const card = proposal(); await button(card.render(), "Approve").click();
+    reply = () => json({ status: "published", result: { url, number: 7 } });
+    await button(card.render(), "Open pull request").click();
+    const root = card.render();
+    assert.equal(flatten(root).filter((node) => node.tagName === "A").length, 0);
+    assert.ok(root.textContent.includes("GitHub returned an invalid result link."));
+    assert.equal(button(root, "Open pull request"), undefined);
+    reply = () => json({ status: "approved", payload, diff: "+server-computed\n" });
   }
 });
 

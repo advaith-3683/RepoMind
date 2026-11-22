@@ -102,7 +102,8 @@ export function createApproval(event, { onChange = () => {}, onRateLimit = () =>
     card.setAttribute("aria-busy", String(busy));
     card.append(element("p", "eyebrow", `Human-in-the-loop / ${event.kind}`));
     const published = publishState === "published";
-    const heading = published ? (event.kind === "patch" ? "Pull request opened" : "Issue created")
+    const publishedNumber = Number.isInteger(result?.number) && result.number > 0 ? ` #${result.number}` : "";
+    const heading = published ? (event.kind === "patch" ? "Pull request opened" : "Issue created") + publishedNumber
       : status === "rejected" ? "Proposal rejected" : status === "decided" ? "Decision unavailable"
         : status === "pending" ? (editing ? "Edit proposal" : "Review before action") : "Decision recorded successfully.";
     const title = element("h2", "approval-heading", heading);
@@ -129,15 +130,17 @@ export function createApproval(event, { onChange = () => {}, onRateLimit = () =>
         card.append(element("pre", "approval-diff", `Original text ${index + 1}\n${edit.old}`));
         field(`Replacement text ${index + 1}`, edit.new, (value) => { edit.new = value; }, true);
       });
+      card.append(element("p", "muted", "This records your edited version as approved. Nothing is published to GitHub until you click "
+        + (event.kind === "patch" ? "Open pull request." : "Create issue.")));
     }
     if (event.kind === "patch" && diff) {
       card.append(element("p", "eyebrow", editing ? "Current server diff / recomputed after approval" : "Server-computed diff"), diffPreview(diff));
     }
     if (published) {
-      if (already) card.append(element("p", "muted", "This action was already published."));
+      if (already) card.append(element("p", "muted", "Already published."));
       const url = githubResultUrl(result?.url);
       if (url) {
-        const link = element("a", "repo-retry", result.url);
+        const link = element("a", "primary", event.kind === "patch" ? "View pull request on GitHub" : "View issue on GitHub");
         link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer";
         card.append(link);
       } else card.append(element("p", "chat-error", "GitHub returned an invalid result link."));
