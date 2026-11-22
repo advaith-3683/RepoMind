@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { createRouter } from "../js/router.js";
 
-function fixture(path = "/") {
+function fixture(path = "/", navType) {
   const events = {}, calls = [], views = [];
   let entries = [path], index = 0;
   const location = { origin: "https://repomind.example", pathname: path, hash: "", search: "" };
@@ -16,7 +16,8 @@ function fixture(path = "/") {
     if (method === "pushState") { entries = entries.slice(0, index + 1); entries.push(url); index++; }
     else entries[index] = url;
   };
-  const browser = { location, history, addEventListener: (name, callback) => { events[name] = callback; } };
+  const performance = navType ? { getEntriesByType: () => [{ type: navType }] } : undefined;
+  const browser = { location, history, performance, addEventListener: (name, callback) => { events[name] = callback; } };
   const page = { title: "", addEventListener: (name, callback) => { events[name] = callback; } };
   const router = createRouter({ browser, page, onView: (view) => views.push(view) });
   function click(path, extra = {}) {
@@ -141,4 +142,24 @@ test("entrypoint assets and navigation use root paths while OAuth still returns 
   assert.ok(!html.includes("#/"));
   const auth = readFileSync(new URL("../js/auth.js", import.meta.url), "utf8");
   assert.ok(auth.includes('target.searchParams.set("redirect_to", `${location.origin}/`)'));
+});
+
+test("Back onto a freshly loaded landing page while signed in shows landing and does not redirect", () => {
+  // After the OAuth round trip, Back reloads "/" as a new document (navigation type back_forward).
+  const app = fixture("/", "back_forward");
+  app.router.setPhase("loading");
+  app.router.setPhase("signed-in");
+  assert.equal(app.location.pathname, "/");
+  assert.equal(app.views.at(-1), "landing");
+  assert.deepEqual(app.calls, []);
+  app.router.navigate("/workspace");   // the "Open workspace" button
+  assert.equal(app.location.pathname, "/workspace");
+  assert.equal(app.views.at(-1), "workspace");
+});
+
+test("a normal first load of / while signed in still goes to workspace", () => {
+  const app = fixture("/", "navigate");
+  app.router.setPhase("signed-in");
+  assert.equal(app.location.pathname, "/workspace");
+  assert.deepEqual(app.calls, [{ method: "replaceState", url: "/workspace" }]);
 });

@@ -1,6 +1,9 @@
 // Auth fragments are consumed by oauth-callback.js before this module runs.
 export function createRouter({ onView = () => {}, browser = window, page = document } = {}) {
   let phase = "loading";
+  // Back/Forward onto a page that is loaded fresh (e.g. "/" after the GitHub sign-in round trip) must show
+  // that URL's view, not be treated as a first visit and bounced forward to /workspace.
+  const traversal = browser.performance?.getEntriesByType?.("navigation")?.[0]?.type === "back_forward";
   const ready = () => phase === "signed-in" || phase === "local";
 
   function render() {
@@ -36,7 +39,7 @@ export function createRouter({ onView = () => {}, browser = window, page = docum
       const previous = phase;
       phase = value;
       // Initial/session/OAuth redirects replace the current entry, never add one.
-      if (ready() && previous !== "signed-in" && previous !== "local" && browser.location.pathname === "/") {
+      if (ready() && !traversal && previous !== "signed-in" && previous !== "local" && browser.location.pathname === "/") {
         browser.history.replaceState(null, "", "/workspace");
       }
       render();
