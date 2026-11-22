@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import store
 from .auth import User, current_user
+from .spa import SPAStaticFiles
 from .config import get_settings
 from .files import read_slice
 from .github import GitHubClient
@@ -261,4 +262,4 @@ def publish(action_id: UUID, request: Request, user: User = Depends(current_user
 # Serve the plain HTML/CSS/JS frontend (same origin => no CORS needed). Mounted last.
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 if _FRONTEND.exists():
-    app.mount("/", StaticFiles(directory=_FRONTEND, html=True), name="frontend")
+    app.mount("/", SPAStaticFiles(directory=_FRONTEND, html=True), name="frontend")
