@@ -120,6 +120,7 @@ def run_agent(
                     if citation_retries < max_citation_retries:
                         citation_retries += 1
                         bad = ", ".join(c.raw for c in v.invalid) or "(no citations at all)"
+                        log.warning("citation_check_failed bad=%s answer=%r", bad, answer[:400])
                         yield {"type": "guardrail", "code": "citation_check_failed",
                                "message": f"Answer had unverifiable citations: {bad}. Asking the model to fix it."}
                         messages.append({"role": "user", "content":
@@ -127,6 +128,7 @@ def run_agent(
                                          f"{tools.evidence.summary()}. Re-issue final_answer citing ONLY those "
                                          "ranges as [path:start-end], or retrieve more code first."})
                         continue
+                    log.warning("citation_check_gave_up answer=%r evidence=%s", answer[:400], tools.evidence.summary()[:300])
                     answer = strip_invalid_citations(answer, v.invalid)
                     v = verify_citations(answer, tools.evidence.items)
                     if not v.valid:
