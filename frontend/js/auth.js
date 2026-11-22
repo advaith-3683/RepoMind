@@ -224,7 +224,9 @@ export function createAuth() {
       sessionStorage.setItem(PENDING, JSON.stringify({ project_url: config.supabase_url, created_at: Date.now() }));
       const target = new URL(`${config.supabase_url}/auth/v1/authorize`);
       target.searchParams.set("provider", "github");
-      target.searchParams.set("scopes", config.github_scopes || "public_repo");
+      const scopes = (config.github_scopes || "public_repo").split(/[ ,]+/).filter(Boolean);
+      if (!scopes.includes("repo") && !scopes.includes("public_repo")) scopes.push("public_repo");
+      target.searchParams.set("scopes", scopes.join(" "));
       target.searchParams.set("redirect_to", `${location.origin}/`);
       publish("redirecting", "Opening GitHub…");
       location.assign(target.href);

@@ -125,6 +125,23 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 .chat-warning { padding: 12px; border-left: 2px solid #9b6b20; background: var(--page); line-height: 1.5; }
 .chat-error { color: #a23e31; border-left: 2px solid currentColor; padding-left: 12px; white-space: pre-wrap; }
 .pending-approval { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--divider); padding-top: 16px; }
+.approval-card { gap: 17px; min-width: 0; }
+.approval-heading { font-size: 32px; line-height: 1.1; }
+.approval-summary { display: flex; flex-direction: column; gap: 10px; padding: 18px; background: var(--page); }
+.approval-summary h3 { font-size: 18px; }
+.approval-body, .approval-confirmation { white-space: pre-wrap; line-height: 1.5; }
+.approval-diff { margin: 0; padding: 12px; max-height: 320px; overflow: auto; white-space: pre; font: 12px/1.7 var(--font-mono); background: var(--page); }
+.diff-added { color: #287249; }
+.diff-removed { color: #a23e31; }
+[data-theme="dark"] .diff-added { color: #8cd4a8; }
+[data-theme="dark"] .diff-removed { color: #f4a092; }
+.approval-actions { display: flex; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--divider); padding-top: 17px; }
+.approval-actions button { cursor: pointer; white-space: normal; }
+.approval-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.approval-secondary { padding: 12px; background: var(--page); color: var(--primary); }
+.approval-field { display: flex; flex-direction: column; gap: 10px; color: var(--primary); }
+.approval-field input, .approval-field textarea { width: 100%; min-width: 0; padding: 13px; border: 1px solid var(--divider); background: var(--page); color: var(--text); }
+.toast { position: fixed; bottom: 24px; right: 24px; z-index: 10; max-width: min(420px, calc(100% - 48px)); padding: 16px; border: 1px solid var(--divider); background: var(--surface); color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
 .run-usage { font: 11px/1.7 var(--font-mono); color: var(--muted); }
 [data-trace-content] { display: flex; flex-direction: column; gap: 16px; }
 .trace-card { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--divider); padding-top: 16px; overflow-wrap: anywhere; line-height: 1.5; }

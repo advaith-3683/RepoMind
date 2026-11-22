@@ -1,5 +1,21 @@
 import { repositoryRequest, ApiError } from "../api.js";
 
+// The server's verified list is the only source of chip targets.
+export function citationParts(text, citations) {
+  const parts = [];
+  let cursor = 0;
+  for (const match of text.matchAll(/\[([\w./\-@+()][\w./\-@+() ]*):(\d+)(?:-(\d+))?\]/g)) {
+    const citation = citations.find((item) => item.path === match[1]
+      && item.start === Number(match[2]) && item.end === Number(match[3] || match[2]));
+    if (!citation) continue;
+    if (match.index > cursor) parts.push({ text: text.slice(cursor, match.index) });
+    parts.push({ text: match[0], citation });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < text.length) parts.push({ text: text.slice(cursor) });
+  return parts;
+}
+
 export function initCitationPreview() {
   const dialog = document.querySelector("[data-citation-dialog]");
   const title = dialog.querySelector("h2");

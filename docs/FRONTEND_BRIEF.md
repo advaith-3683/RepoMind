@@ -148,4 +148,6 @@ Clean developer-tool look: neutral background, one accent colour, system UI font
 To test without a backend, you may create `frontend/dev/mock-server.js` (Node, no deps) that mimics `API_CONTRACT.md`, including an SSE `/ask` that emits each event type. Keep it out of the production path.
 
 ## Questions for backend
-(none yet)
+- Step 7.2: The contract's inline-citation regex excludes spaces and parentheses, while verified citation paths can include both. Should that example be updated? The frontend now uses `answer.citations` as the allowlist and leaves unmatched references as plain text, per the Step 7.2 request.
+- Step 7.2 interpretation: approval is an inline card in the answer area, as requested for this step, rather than the earlier modal. It remains visible until the answer is replaced; Escape does not dismiss it. Patch editing changes title, body and each edit's `new` text while preserving path and `old`; only the server recomputes the diff.
+- Step 7.2: The publish response has no `diff` field. Should the success view retain the decision response's diff? The frontend does so, alongside the returned URL and optional branch, without making an extra action-status request.

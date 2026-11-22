@@ -218,6 +218,17 @@ test("sign-in uses configured OAuth endpoint, scopes, and a clean return URL", a
   assert.equal(target.searchParams.has("apikey"), false);
 });
 
+test("sign-in adds only public_repo when configured scopes cannot publish public repositories", async () => {
+  for (const configured of [undefined, "", "read:user user:email", "public_repo", "repo", "repo,user:email"]) {
+    config.github_scopes = configured;
+    const { auth } = instance(); await auth.initialize(); auth.signIn();
+    const scopes = new URL(navigation).searchParams.get("scopes").split(" ");
+    const expected = (configured || "public_repo").split(/[ ,]+/).filter(Boolean);
+    if (!expected.includes("repo") && !expected.includes("public_repo")) expected.push("public_repo");
+    assert.deepEqual(scopes, expected);
+  }
+});
+
 test("page-load initialization clears an abandoned sign-in and allows retry", async () => {
   const { auth, state } = instance(); await auth.initialize(); auth.signIn();
   assert.equal(state().phase, "redirecting");

@@ -117,7 +117,7 @@
       variant = value; await reset(); await send(); const output = await settled(expected);
       if (["no-citations", "not-found"].includes(value)) assert(await output.locator(".citation-chip").count() === 0, "Parsed inline citation text");
       if (value === "approval") {
-        assert(await output.getByRole("button").count() === 0, "Approval card exposes actions");
+        assert(await output.getByRole("button", { name: "Approve", exact: true }).isVisible(), "Approval control missing");
         assert(await output.getByText("Fixture change").isVisible(), "Proposal title missing");
       }
     }

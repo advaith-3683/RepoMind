@@ -16,7 +16,7 @@ export async function publicRequest(path, options = {}) {
   return parseResponse(await backendFetch(path, options));
 }
 
-async function backendFetch(path, { method = "GET", body, signal, accessToken, accept = "application/json" } = {}) {
+async function backendFetch(path, { method = "GET", body, signal, accessToken, githubToken, accept = "application/json" } = {}) {
   const base = (window.REPOMIND_API_BASE || "").replace(/\/$/, "");
   let response;
   try {
@@ -27,6 +27,8 @@ async function backendFetch(path, { method = "GET", body, signal, accessToken, a
         Accept: accept,
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(githubToken && method === "POST" && /^\/actions\/[^/]+\/publish$/.test(path)
+          ? { "X-GitHub-Token": githubToken } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });

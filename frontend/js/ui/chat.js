@@ -1,5 +1,7 @@
 import { askQuestion } from "../sse.js";
-import { initCitationPreview } from "./citation.js";
+import { initCitationPreview, citationParts } from "./citation.js";
+import { createApproval } from "./approval.js";
+import { toast } from "./toast.js";
 
 const MODE_KEY = "repomind.askMode";
 const descriptions = { fast: "Fast: 1 retrieval + 1 LLM call", agent: "Agent: multi-step search, can propose changes" };
@@ -55,7 +57,15 @@ export function initChat() {
     controls();
   }
 
+  function rateLimit() {
+    cooldownUntil = Date.now() + 10000;
+    clearTimeout(cooldownTimer);
+    cooldownTimer = setTimeout(controls, 10000);
+    controls();
+  }
+
   function render() {
+    if (run?.approval) run.status = run.approval.statusText();
     document.querySelectorAll("[data-workspace-state]").forEach((node) => { node.hidden = !!run; });
     outputs.forEach((output) => {
       output.hidden = !run;
@@ -68,16 +78,25 @@ export function initChat() {
         const answer = run.answer;
         if (!answer.found) card.append(element("h2", "", "Not found in this repo"));
         if (answer.confidence === "low") card.append(element("p", "chat-warning", "Low confidence: verify against the cited code."));
-        card.append(element("p", "answer-text", answer.text));
+        const text = element("p", "answer-text");
+        const used = new Set();
+        const chip = (citation, label) => {
+          const button = element("button", "citation-chip", label);
+          button.type = "button";
+          button.addEventListener("click", () => citationPreview.open(run.repoId, citation, button));
+          return button;
+        };
+        citationParts(answer.text, answer.citations).forEach((part) => {
+          if (part.citation) { text.append(chip(part.citation, part.text)); used.add(part.citation); }
+          else text.append(element("span", "", part.text));
+        });
+        card.append(text);
         if (answer.citations.length) {
           const chips = element("div", "citations");
           answer.citations.forEach((citation) => {
-            const button = element("button", "citation-chip", `${citation.path}:${citation.start}-${citation.end}`);
-            button.type = "button";
-            button.addEventListener("click", () => citationPreview.open(run.repoId, citation, button));
-            chips.append(button);
+            if (!used.has(citation)) chips.append(chip(citation, `${citation.path}:${citation.start}-${citation.end}`));
           });
-          card.append(chips);
+          if (chips.childElementCount) card.append(chips);
         }
       }
       if (run.clarification) {
@@ -94,12 +113,7 @@ export function initChat() {
         }
       }
       if (run.approval) {
-        const pending = element("section", "pending-approval");
-        pending.append(element("h2", "", "Pending approval"), element("p", "", run.approval.kind),
-          element("p", "", run.approval.payload.title));
-        if (run.approval.payload.path) pending.append(element("p", "mono", run.approval.payload.path));
-        pending.append(element("p", "muted", "Nothing has been applied."));
-        card.append(pending);
+        card.append(run.approval.render());
       }
       if (run.error) card.append(element("p", "chat-error", run.error));
       if (run.usage) {
@@ -144,6 +158,7 @@ export function initChat() {
     const version = ++epoch;
     active = controller;
     citationPreview.close();
+    run?.approval?.dispose();
     run = { repoId: repo.id, question, mode: selectedMode, status: "Connecting…", events: [] };
     render();
     try {
@@ -157,8 +172,18 @@ export function initChat() {
             case "guardrail": run.events.push(event); break;
             case "answer": run.answer = event; run.status = "Finishing…"; break;
             case "needs_clarification": run.clarification = event; run.status = "Needs clarification"; textarea()?.focus(); break;
-            case "approval_required": run.approval = event; run.status = "Pending approval"; break;
-            case "error": run.error = event.message; run.events.push(event); run.status = "Could not answer"; break;
+            case "approval_required": run.approval = createApproval(event, {
+              onChange() {
+                render();
+                const card = [...document.querySelectorAll(".approval-card")].find((node) => node.getBoundingClientRect().width > 0);
+                (card?.querySelector("input:not(:disabled)") || card?.querySelector("h2"))?.focus();
+              },
+              onRateLimit: rateLimit,
+            }); run.status = "Pending approval"; break;
+            case "error": run.error = event.message; run.events.push(event); run.status = "Could not answer";
+              if (["rate_limited", "llm_unavailable"].includes(event.code)) toast(event.message);
+              if (event.code === "rate_limited") rateLimit();
+              break;
             case "done": run.usage = event.usage;
               run.status = { completed: "Answer complete", needs_clarification: "Needs clarification", awaiting_approval: "Pending approval", error: "Could not answer" }[event.status]; break;
           }
@@ -170,9 +195,7 @@ export function initChat() {
       run.status = error.name === "AbortError" ? "Run stopped" : "Could not answer";
       if (error.name !== "AbortError") run.error = error.message;
       if (error.status === 429) {
-        cooldownUntil = Date.now() + 10000;
-        clearTimeout(cooldownTimer);
-        cooldownTimer = setTimeout(controls, 10000);
+        rateLimit(); toast(error.message);
       }
       if (["prompt_injection", "empty_query", "query_too_long", "invalid_query"].includes(error.code)) textarea()?.focus();
     } finally {
@@ -193,7 +216,7 @@ export function initChat() {
     form.querySelector("[data-stop]").addEventListener("click", () => { active?.abort(); input.focus(); });
   });
   document.querySelectorAll("[data-mode]").forEach((button) => button.addEventListener("click", () => chooseMode(button.dataset.mode)));
-  window.addEventListener("pagehide", () => { active?.abort(); citationPreview.close(); clearTimeout(cooldownTimer); });
+  window.addEventListener("pagehide", () => { active?.abort(); run?.approval?.dispose(); citationPreview.close(); clearTimeout(cooldownTimer); });
   render();
   return {
     setRepository(state) {
@@ -201,6 +224,7 @@ export function initChat() {
       available = !state.loading && !state.error && next?.status === "ready";
       const changed = next?.id !== repo?.id;
       if (changed) {
+        run?.approval?.dispose();
         epoch += 1; active?.abort(); active = null; run = null; citationPreview.close();
         forms.forEach((form) => { form.querySelector("textarea").value = ""; });
       }
