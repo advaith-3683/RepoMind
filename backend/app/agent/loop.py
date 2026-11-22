@@ -23,6 +23,11 @@ OBS_PREVIEW_CHARS = 300
 
 log = logging.getLogger(__name__)
 
+
+def _example_citation(tools) -> str:
+    items = tools.evidence.items
+    return f"[{items[0].path}:{items[0].start}-{items[0].end}]" if items else "[path/to/file.py:10-20]"
+
 @dataclass
 class Action:
     thought: str
@@ -135,7 +140,9 @@ def run_agent(
                         messages.append({"role": "user", "content":
                                          f"Citation check failed: {bad}. Evidence you actually retrieved: "
                                          f"{tools.evidence.summary()}. Re-issue final_answer citing ONLY those "
-                                         "ranges as [path:start-end], or retrieve more code first."})
+                                         "ranges as [path:start-end], or retrieve more code first. "
+                                         f"Write citations literally in brackets, e.g. {_example_citation(tools)} "
+                                         "(not 'line 12' in prose)."})
                         continue
                     log.warning("citation_check_gave_up answer=%r evidence=%s", answer[:400], tools.evidence.summary()[:300])
                     answer = strip_invalid_citations(answer, v.invalid)

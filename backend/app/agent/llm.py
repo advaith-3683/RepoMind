@@ -164,6 +164,8 @@ class OpenAICompatLLM:
             choice = data["choices"][0]
             text = choice["message"].get("content") or ""
             usage = data.get("usage") or {}
+            if not text.strip() and isinstance(choice["message"].get("reasoning"), str):
+                text = choice["message"]["reasoning"]   # gpt-oss sometimes puts its whole reply in `reasoning`
             if not text.strip():
                 logging.getLogger(__name__).warning(
                     "empty_llm_content model=%s finish=%s keys=%s completion_tokens=%s", self.model_id,

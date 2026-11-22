@@ -325,3 +325,12 @@ def test_parse_action_tolerates_bare_answer_and_native_tool_shape():
     assert b.name == "search_code" and b.args == {"query": "auth"}
     with pytest.raises(ValueError):
         parse_action('{"foo": 1}')
+
+
+def test_empty_content_falls_back_to_reasoning_field():
+    def handler(req):
+        return httpx.Response(200, json={"choices": [{"message": {"content": "", "reasoning": '{"action":"search_code","args":{"query":"x"}}'},
+                                                      "finish_reason": "stop"}], "usage": {}})
+
+    res = make(handler).complete("s", [])
+    assert parse_action(res.text).name == "search_code"
