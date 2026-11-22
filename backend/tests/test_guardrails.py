@@ -128,3 +128,20 @@ def test_groundedness():
     assert groundedness_score("no identifiers here", "anything") == 1.0
     assert groundedness_score("uses `make_token`", "def make_token(user)") == 1.0
     assert groundedness_score("uses `make_token` and `ghost_fn`", "def make_token(user)") == 0.5
+
+
+def test_citation_paths_with_spaces_are_verified():
+    from app.guardrails.output import Evidence, extract_citations, verify_citations
+
+    ans = "Login is in [smartspend backend/auth.py:121-148] and [src/app/(auth)/page.tsx:3-9]."
+    cites = extract_citations(ans)
+    assert [c.path for c in cites] == ["smartspend backend/auth.py", "src/app/(auth)/page.tsx"]
+    v = verify_citations(ans, [Evidence("smartspend backend/auth.py", 100, 150), Evidence("src/app/(auth)/page.tsx", 1, 20)])
+    assert len(v.valid) == 2 and not v.invalid
+
+
+def test_slash_rewrite_of_spaced_path_is_still_invalid():
+    from app.guardrails.output import Evidence, verify_citations
+
+    v = verify_citations("[smartspend/backend/auth.py:121-148]", [Evidence("smartspend backend/auth.py", 121, 148)])
+    assert v.invalid and not v.valid

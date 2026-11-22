@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 
 # [path/to/file.py:10-20] or [file.py:10]
-CITATION_RE = re.compile(r"\[([\w./\-@+]+):(\d+)(?:-(\d+))?\]")
+CITATION_RE = re.compile(r"\[([\w./\-@+()][\w./\-@+() ]*):(\d+)(?:-(\d+))?\]")   # spaces allowed: repos can have folders like "my backend/"
 _BACKTICK_RE = re.compile(r"`([A-Za-z_][\w.]{2,})`")
 
 
