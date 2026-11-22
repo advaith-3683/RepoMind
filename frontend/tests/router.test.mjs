@@ -1,16 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import { createRouter } from "../js/router.js";
 
 function fixture(path = "/") {
   const events = {}, calls = [], views = [];
   let entries = [path], index = 0;
-  const location = { origin: "https://repomind.example", pathname: path, hash: "" };
+  const location = { origin: "https://repomind.example", pathname: path, hash: "", search: "" };
   const history = {};
   for (const method of ["pushState", "replaceState"]) history[method] = (_state, _title, url) => {
     calls.push({ method, url });
     location.pathname = url;
+    location.hash = "";
     if (method === "pushState") { entries = entries.slice(0, index + 1); entries.push(url); index++; }
     else entries[index] = url;
   };
@@ -28,7 +30,7 @@ function fixture(path = "/") {
     if (next < 0 || next >= entries.length) return;
     index = next; location.pathname = entries[index]; events.popstate();
   }
-  return { router, location, page, calls, views, click, back: () => move(-1), forward: () => move(1) };
+  return { router, browser, location, page, calls, views, click, back: () => move(-1), forward: () => move(1) };
 }
 
 test("signed-out workspace visits redirect to the landing path and title", () => {
@@ -47,32 +49,68 @@ test("restored signed-in sessions and local mode redirect landing visits to work
     assert.equal(app.location.pathname, "/workspace");
     assert.equal(app.page.title, "RepoMind — Workspace");
     assert.equal(app.views.at(-1), "workspace");
+    assert.deepEqual(app.calls, [{ method: "replaceState", url: "/workspace" }]);
   }
 });
 
-test("successful sign-in pushes workspace only after initialization finishes", () => {
+test("successful sign-in replaces workspace only after initialization finishes", () => {
   const app = fixture(); app.location.hash = "#access_token=fake-callback";
   app.router.setPhase("loading");
   assert.equal(app.calls.length, 0); assert.equal(app.location.hash, "#access_token=fake-callback");
   // The blocking callback script consumes the fragment; auth then validates the session.
   app.location.hash = "";
   app.router.setPhase("signed-out"); app.router.setPhase("redirecting"); app.router.setPhase("signed-in");
-  assert.deepEqual(app.calls, [{ method: "pushState", url: "/workspace" }]);
+  assert.deepEqual(app.calls, [{ method: "replaceState", url: "/workspace" }]);
   assert.equal(app.page.title, "RepoMind — Workspace");
 });
 
-test("Back and Forward reapply auth guards and titles without adding history entries", () => {
-  const app = fixture(); app.router.setPhase("signed-out"); app.router.setPhase("signed-in");
-  const pushes = () => app.calls.filter((call) => call.method === "pushState").length;
-  const before = pushes();
+test("signed-in Back and Forward render the path and title without redirecting", () => {
+  const app = fixture("/workspace"); app.router.setPhase("signed-in");
+  app.click("/"); app.click("/workspace");
+  const before = app.calls.length;
   app.back();
-  assert.equal(app.location.pathname, "/workspace"); assert.equal(app.views.at(-1), "workspace");
-  assert.equal(app.page.title, "RepoMind — Workspace"); assert.equal(pushes(), before);
-  app.router.setPhase("signed-out");
   assert.equal(app.location.pathname, "/"); assert.equal(app.views.at(-1), "landing");
+  assert.equal(app.page.title, "RepoMind — Understand your code");
+  app.router.setPhase("signed-in"); // A repeated auth notification must preserve this visit.
+  assert.equal(app.location.pathname, "/");
   app.forward();
-  assert.equal(app.location.pathname, "/"); assert.equal(app.page.title, "RepoMind — Understand your code");
-  assert.equal(pushes(), before);
+  assert.equal(app.location.pathname, "/workspace"); assert.equal(app.views.at(-1), "workspace");
+  assert.equal(app.page.title, "RepoMind — Workspace"); assert.equal(app.calls.length, before);
+});
+
+test("signed-out Back and Forward onto workspace replace it with landing", () => {
+  const app = fixture("/workspace"); app.router.setPhase("signed-in");
+  app.click("/"); app.click("/workspace"); app.click("/");
+  app.router.setPhase("signed-out");
+  app.back();
+  assert.equal(app.location.pathname, "/"); assert.equal(app.views.at(-1), "landing");
+  app.back(); app.back();
+  assert.equal(app.location.pathname, "/"); assert.equal(app.views.at(-1), "landing");
+  assert.deepEqual(app.calls.slice(-2), [{ method: "replaceState", url: "/" }, { method: "replaceState", url: "/" }]);
+  // Build a forward entry that remains protected after signing out at root.
+  const forward = fixture("/workspace"); forward.router.setPhase("signed-in");
+  forward.click("/"); forward.click("/workspace"); forward.back(); forward.router.setPhase("signed-out");
+  const before = forward.calls.length;
+  forward.forward();
+  assert.deepEqual(forward.calls.slice(before), [{ method: "replaceState", url: "/" }]);
+  assert.equal(forward.page.title, "RepoMind — Understand your code");
+});
+
+test("OAuth callback removes the token fragment and replaces root with workspace", () => {
+  const app = fixture();
+  app.location.hash = "#access_token=fake-access&refresh_token=fake-refresh&expires_in=3600&token_type=bearer";
+  const records = new Map();
+  vm.runInNewContext(readFileSync(new URL("../js/oauth-callback.js", import.meta.url), "utf8"), {
+    URLSearchParams, Date, location: app.location, history: app.browser.history,
+    sessionStorage: { setItem: (key, value) => records.set(key, value) },
+  });
+  assert.equal(app.location.hash, "");
+  assert.equal(JSON.parse(records.get("repomind.oauth.callback")).access_token, "fake-access");
+  app.router.setPhase("loading"); app.router.setPhase("signed-in");
+  assert.equal(app.location.pathname, "/workspace");
+  assert.deepEqual(app.calls, [{ method: "replaceState", url: "/" }, { method: "replaceState", url: "/workspace" }]);
+  app.back();
+  assert.equal(app.location.pathname, "/workspace");
 });
 
 test("internal path links use pushState and apply the same auth guards", () => {
@@ -81,7 +119,7 @@ test("internal path links use pushState and apply the same auth guards", () => {
   assert.equal(app.location.pathname, "/");
   assert.deepEqual(app.calls, [{ method: "pushState", url: "/workspace" }, { method: "replaceState", url: "/" }]);
   app.router.setPhase("signed-in");
-  assert.equal(app.click("/"), true); assert.equal(app.location.pathname, "/workspace");
+  assert.equal(app.click("/"), true); assert.equal(app.location.pathname, "/");
 });
 
 test("modified clicks, external links and fragments retain native browser behavior", () => {

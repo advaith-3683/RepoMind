@@ -5,6 +5,13 @@
   const origin = "http://127.0.0.1:8765", project = "https://auth.example.test";
   const errors = [], checks = [];
   const assert = (value, message) => { if (!value) throw Error(message); };
+  await tab.addInitScript(() => {
+    window.historyCalls = [];
+    for (const method of ["pushState", "replaceState"]) {
+      const original = history[method].bind(history);
+      history[method] = (...args) => { window.historyCalls.push({ method, path: args[2] }); return original(...args); };
+    }
+  });
   tab.on("pageerror", (error) => errors.push(error.message));
   await tab.route(origin + "/workspace", async (route) => {
     // Simulate the separately owned server fallback using the same index.html.
@@ -25,6 +32,7 @@
     await tab.goto(origin + "/workspace"); await settled("signed-out", "/");
     assert(await tab.locator("#auth-screen").isVisible(), "Signed-out workspace guard failed");
     assert(await tab.title() === "RepoMind — Understand your code", "Wrong landing title");
+    assert(await tab.evaluate(() => historyCalls.length === 1 && historyCalls[0].method === "replaceState" && historyCalls[0].path === "/"), "Signed-out redirect added history");
     checks.push("signed-out direct workspace visit");
     await tab.evaluate((project) => sessionStorage.setItem("repomind.oauth.pending", JSON.stringify({ project_url: project, created_at: Date.now() })), project);
     await tab.goto("about:blank"); // Simulate returning from an external provider, not a same-document hash change.
@@ -33,12 +41,22 @@
     assert(await tab.locator("#app-shell").isVisible(), "Callback did not show app");
     assert(await tab.title() === "RepoMind — Workspace", "Wrong workspace title");
     assert(await tab.evaluate(() => location.hash === "" && JSON.parse(sessionStorage.getItem("repomind.auth.session")).provider_token === "fake-provider"), "Callback tokens not consumed before routing");
+    assert(await tab.evaluate(() => historyCalls.length === 2 && historyCalls.every(call => call.method === "replaceState") && historyCalls[1].path === "/workspace"), "OAuth redirects must only replace history");
     checks.push("mock callback saved and stripped before workspace navigation");
     await tab.reload(); await settled("signed-in", "/workspace");
-    await tab.locator(".topbar .logo").click(); await settled("signed-in", "/workspace");
-    await tab.goBack(); await settled("signed-in", "/workspace");
+    // Seed a same-document landing entry, then traverse back to it while signed in.
+    await tab.evaluate(() => { history.replaceState(null, "", "/"); history.pushState(null, "", "/workspace"); historyCalls.length = 0; });
+    await tab.goBack();
+    assert(await tab.evaluate(() => location.pathname === "/" && !document.querySelector("#auth-screen").hidden), "Back to / must render landing without redirecting");
+    await tab.getByRole("button", { name: "Open workspace", exact: true }).waitFor();
+    assert(await tab.title() === "RepoMind — Understand your code", "Back left a stale title");
+    assert(await tab.evaluate(() => historyCalls.length === 0), "Signed-in popstate redirected");
     await tab.goForward(); await settled("signed-in", "/workspace");
-    assert(await tab.locator("#auth-screen").isHidden(), "Back/Forward bypassed signed-in guard");
+    await tab.goBack();
+    assert(await tab.evaluate(() => historyCalls.length === 0), "Back/Forward changed history");
+    await tab.getByRole("button", { name: "Open workspace", exact: true }).click();
+    await settled("signed-in", "/workspace");
+    assert(await tab.evaluate(() => historyCalls.length === 1 && historyCalls[0].method === "pushState" && historyCalls[0].path === "/workspace"), "Open workspace must push its destination");
     checks.push("workspace reload, root nav and Back/Forward");
     await tab.locator(".topbar [data-sign-out]").click(); await settled("signed-out", "/");
     assert(await tab.title() === "RepoMind — Understand your code", "Sign-out title stale");

@@ -3,13 +3,20 @@ export function createRouter({ onView = () => {}, browser = window, page = docum
   let phase = "loading";
   const ready = () => phase === "signed-in" || phase === "local";
 
-  function render(method = "replaceState") {
-    const view = ready() ? "workspace" : "landing";
-    const path = ready() ? "/workspace" : "/";
-    // Do not navigate while the callback/session is still being validated.
-    if (phase !== "loading" && browser.location.pathname !== path) browser.history[method](null, "", path);
+  function render() {
+    // History traversal respects the path; only protected signed-out visits redirect.
+    if (phase !== "loading" && !ready() && browser.location.pathname === "/workspace") {
+      browser.history.replaceState(null, "", "/");
+    }
+    const view = ready() && browser.location.pathname === "/workspace" ? "workspace" : "landing";
     page.title = view === "workspace" ? "RepoMind — Workspace" : "RepoMind — Understand your code";
     onView(view);
+  }
+
+  function navigate(path) {
+    if (phase === "loading") return;
+    if (path !== browser.location.pathname) browser.history.pushState(null, "", path);
+    render();
   }
 
   browser.addEventListener("popstate", () => render());
@@ -20,16 +27,19 @@ export function createRouter({ onView = () => {}, browser = window, page = docum
     const url = new URL(link.href, browser.location.origin);
     if (url.origin !== browser.location.origin || !["/", "/workspace"].includes(url.pathname) || url.hash || url.search) return;
     event.preventDefault();
-    if (phase === "loading") return;
-    if (url.pathname !== browser.location.pathname) browser.history.pushState(null, "", url.pathname);
-    render();
+    navigate(url.pathname);
   });
 
   return {
+    navigate,
     setPhase(value) {
       const previous = phase;
       phase = value;
-      render(previous !== "loading" && ready() ? "pushState" : "replaceState");
+      // Initial/session/OAuth redirects replace the current entry, never add one.
+      if (ready() && previous !== "signed-in" && previous !== "local" && browser.location.pathname === "/") {
+        browser.history.replaceState(null, "", "/workspace");
+      }
+      render();
     },
   };
 }

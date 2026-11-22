@@ -34,8 +34,8 @@ auth.subscribe(({ phase, message, login }) => {
   const ready = phase === "signed-in" || phase === "local";
   document.documentElement.dataset.authState = phase;
   document.querySelector("[data-auth-message]").textContent = message;
-  document.querySelector("[data-sign-in]").disabled = phase !== "signed-out";
-  document.querySelector("[data-sign-in]").textContent = phase === "redirecting" ? "Opening GitHub…" : "Continue with GitHub";
+  document.querySelector("[data-sign-in]").disabled = !ready && phase !== "signed-out";
+  document.querySelector("[data-sign-in]").textContent = ready ? "Open workspace" : phase === "redirecting" ? "Opening GitHub…" : "Continue with GitHub";
   document.querySelector("[data-auth-retry]").hidden = phase !== "error";
   document.querySelectorAll("[data-user-login]").forEach((node) => { node.textContent = login; });
   document.querySelectorAll("[data-account]").forEach((node) => { node.hidden = phase === "local"; });
@@ -54,7 +54,10 @@ auth.subscribe(({ phase, message, login }) => {
     document.querySelector("[data-sign-in]").focus();
   }
 });
-document.querySelector("[data-sign-in]").addEventListener("click", auth.signIn);
+document.querySelector("[data-sign-in]").addEventListener("click", () => {
+  if (workspaceActive) router.navigate("/workspace");
+  else auth.signIn();
+});
 document.querySelector("[data-auth-retry]").addEventListener("click", auth.initialize);
 document.querySelectorAll("[data-sign-out]").forEach((button) => button.addEventListener("click", auth.signOut));
 window.addEventListener("pageshow", (event) => {
