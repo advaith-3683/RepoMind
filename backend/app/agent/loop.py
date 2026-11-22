@@ -44,6 +44,13 @@ def parse_action(text: str) -> Action:
             obj = json.loads(m.group(0))
         except json.JSONDecodeError as e:
             raise ValueError(f"invalid JSON: {e}")
+    if isinstance(obj, dict) and not isinstance(obj.get("action"), str):
+        # tolerate common off-protocol shapes; they still pass every guardrail (citations, evidence, budget)
+        if isinstance(obj.get("answer"), str):
+            obj = {"thought": obj.get("thought", ""), "action": "final_answer",
+                   "args": {"answer": obj["answer"], "found": obj.get("found", True)}}
+        elif isinstance(obj.get("name"), str) and isinstance(obj.get("arguments"), dict):
+            obj = {"thought": obj.get("thought", ""), "action": obj["name"].rsplit(".", 1)[-1], "args": obj["arguments"]}
     if not isinstance(obj, dict) or not isinstance(obj.get("action"), str):
         raise ValueError("missing string field 'action'")
     args = obj.get("args") or {}
@@ -98,7 +105,9 @@ def run_agent(
                 messages.append({"role": "assistant", "content": res.text})
                 messages.append({"role": "user", "content":
                                  f"Invalid response ({e}). Reply with a single JSON object: "
-                                 '{"thought": "...", "action": "...", "args": {...}}'})
+                                 '{"thought": "...", "action": "...", "args": {...}} where action is one of '
+                                 "search_code, read_file, find_symbol, final_answer. Do not answer from memory: "
+                                 "start with search_code."})
                 continue
 
             messages.append({"role": "assistant", "content": res.text})

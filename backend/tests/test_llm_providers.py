@@ -316,3 +316,12 @@ def test_malformed_output_not_cached(tmp_path):
     c = CachingLLM(inner, DiskCache(tmp_path))
     c.complete("s", []); c.complete("s", [])
     assert inner.calls == 2
+
+
+def test_parse_action_tolerates_bare_answer_and_native_tool_shape():
+    a = parse_action('{"answer": "It uses cookies [a.py:1-2]"}')
+    assert a.name == "final_answer" and a.args["answer"].startswith("It uses") and a.args["found"] is True
+    b = parse_action('{"name": "repo_browser.search_code", "arguments": {"query": "auth"}}')
+    assert b.name == "search_code" and b.args == {"query": "auth"}
+    with pytest.raises(ValueError):
+        parse_action('{"foo": 1}')

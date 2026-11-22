@@ -10,6 +10,7 @@ a scripted fake and production composes:
 
 NOTE: verify the google-genai call shape / model names against current docs."""
 import json
+import logging
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -160,8 +161,13 @@ class OpenAICompatLLM:
     def _parse(self, r: httpx.Response) -> LLMResult:
         try:
             data = r.json()
-            text = data["choices"][0]["message"]["content"] or ""
+            choice = data["choices"][0]
+            text = choice["message"].get("content") or ""
             usage = data.get("usage") or {}
+            if not text.strip():
+                logging.getLogger(__name__).warning(
+                    "empty_llm_content model=%s finish=%s keys=%s completion_tokens=%s", self.model_id,
+                    choice.get("finish_reason"), sorted(choice["message"].keys()), usage.get("completion_tokens"))
         except (ValueError, KeyError, IndexError, TypeError) as e:
             raise LLMError(f"unexpected response shape from {self.model_id}") from e
         return LLMResult(text, int(usage.get("prompt_tokens", 0) or 0), int(usage.get("completion_tokens", 0) or 0))
