@@ -4,6 +4,7 @@ LLM-agnostic and fully testable with a scripted fake LLM.
 run_agent() is a generator of event dicts; the API layer turns them into SSE.
 Event types: step, guardrail, proposal, answer, needs_clarification, error."""
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Iterator
@@ -19,6 +20,8 @@ from .tools import TOOL_NAMES, RepoTools, ToolError
 
 OBS_PREVIEW_CHARS = 300
 
+
+log = logging.getLogger(__name__)
 
 @dataclass
 class Action:
@@ -87,6 +90,7 @@ def run_agent(
                 action = parse_action(res.text)
             except ValueError as e:
                 parse_failures += 1
+                log.warning("bad_model_output attempt=%s err=%s text=%r", parse_failures, e, (res.text or "")[:300])
                 if parse_failures > 2:
                     yield {"type": "error", "code": "bad_model_output",
                            "message": "The model kept returning invalid output."}

@@ -154,12 +154,12 @@ def test_fallback_all_fail_raises_last():
 
 # ---------- cache ----------
 def test_caching_llm_hit_avoids_inner_call(tmp_path):
-    inner = Stub(LLMResult("answer", 5, 3))
+    inner = Stub(LLMResult('{"action":"final_answer","args":{}}', 5, 3))
     c = CachingLLM(inner, DiskCache(tmp_path))
     first = c.complete("sys", [{"role": "user", "content": "q"}])
     second = c.complete("sys", [{"role": "user", "content": "q"}])
     assert inner.calls == 1 and not first.cached and second.cached
-    assert (second.text, second.tokens_in, second.tokens_out) == ("answer", 5, 3)
+    assert (second.text, second.tokens_in, second.tokens_out) == ('{"action":"final_answer","args":{}}', 5, 3)
     assert (c.hits, c.misses) == (1, 1)
     c.complete("sys", [{"role": "user", "content": "different"}])     # key depends on messages
     assert inner.calls == 2
@@ -167,17 +167,17 @@ def test_caching_llm_hit_avoids_inner_call(tmp_path):
 
 def test_cache_key_depends_on_model_and_system(tmp_path):
     cache = DiskCache(tmp_path)
-    CachingLLM(Stub(LLMResult("A"), model_id="m1"), cache).complete("sys", [])
-    inner2 = Stub(LLMResult("B"), model_id="m2")
-    assert CachingLLM(inner2, cache).complete("sys", []).text == "B"
+    CachingLLM(Stub(LLMResult('{"action":"final_answer","args":{}}'), model_id="m1"), cache).complete("sys", [])
+    inner2 = Stub(LLMResult('{"action":"final_answer","args":{}}'), model_id="m2")
+    assert CachingLLM(inner2, cache).complete("sys", []).text == '{"action":"final_answer","args":{}}'
     CachingLLM(inner2, cache).complete("other sys", [])
     assert inner2.calls == 2
 
 
 def test_persists_across_instances_and_replay_mode(tmp_path):
-    CachingLLM(Stub(LLMResult("A")), DiskCache(tmp_path)).complete("s", [])
+    CachingLLM(Stub(LLMResult('{"action":"final_answer","args":{}}')), DiskCache(tmp_path)).complete("s", [])
     replay = CachingLLM(Stub(error=AssertionError("must not call")), DiskCache(tmp_path), mode="replay")
-    assert replay.complete("s", []).text == "A"
+    assert replay.complete("s", []).text == '{"action":"final_answer","args":{}}'
     with pytest.raises(CacheMiss):
         replay.complete("never recorded", [])
 
@@ -309,3 +309,10 @@ def test_tool_use_failed_unparseable_still_raises():
 
     with pytest.raises(LLMError):
         make(handler).complete("s", [])
+
+
+def test_malformed_output_not_cached(tmp_path):
+    inner = Stub(LLMResult("sorry, I cannot produce JSON"))
+    c = CachingLLM(inner, DiskCache(tmp_path))
+    c.complete("s", []); c.complete("s", [])
+    assert inner.calls == 2

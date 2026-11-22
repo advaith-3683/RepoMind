@@ -229,6 +229,16 @@ class FallbackLLM:
         raise last
 
 
+def _is_valid_action(text: str) -> bool:
+    from .loop import parse_action   # lazy: loop imports this module
+
+    try:
+        parse_action(text)
+        return True
+    except ValueError:
+        return False
+
+
 class CachingLLM:
     """mode: 'readwrite' (default) or 'replay' (never call the API; miss => CacheMiss)."""
 
@@ -250,7 +260,7 @@ class CachingLLM:
             raise CacheMiss("LLM call not found in cache (replay mode).")
         self.misses += 1
         res = self.inner.complete(system, messages)
-        if res.text.strip():
+        if res.text.strip() and _is_valid_action(res.text):   # never cache malformed output: it would replay the failure
             self.cache.set("llm", key, {"text": res.text, "tokens_in": res.tokens_in, "tokens_out": res.tokens_out})
         return res
 
