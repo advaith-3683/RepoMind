@@ -15,6 +15,10 @@ on:
       limit:
         description: "Only the first N questions (0 = all). Use 3 for a smoke test."
         default: "3"
+      use_fallback:
+        description: "Allow the OpenRouter fallback model. Leave OFF for valid evals: it would mix two models in one result."
+        type: boolean
+        default: false
       task:
         description: "full = red-team + retrieval + end-to-end; sweep = retrieval-settings sweep only (no LLM calls, fast)"
         type: choice
@@ -41,7 +45,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-      LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+      LLM_FALLBACK_API_KEY: ${{ inputs.use_fallback && secrets.LLM_FALLBACK_API_KEY || '' }}   # empty = no fallback
       LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
       GITHUB_API_TOKEN: ${{ github.token }}   # read-only token for the public-repo pre-check (avoids the 60/h anonymous limit)
     steps:

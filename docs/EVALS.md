@@ -19,7 +19,7 @@ Small sample (32 questions, one repo): report it as that, not as a general accur
 
 ## Run (GitHub Actions, Linux; recommended)
 Repo → Settings → Secrets and variables → Actions. Secrets: `DATABASE_URL` (Supabase Session Pooler), `GEMINI_API_KEY`, `LLM_API_KEY`;
-optional `LLM_FALLBACK_API_KEY`; optional variable `LLM_FALLBACK_MODEL`. Then Actions → evals → Run workflow:
+optional `LLM_FALLBACK_API_KEY` (only passed to the run if you tick `use_fallback`, which should stay off for valid evals); optional variable `LLM_FALLBACK_MODEL`. Then Actions → evals → Run workflow:
 first with limit 3 (smoke test), then limit 0 (all questions). The repo must already be indexed and Ready in the app.
 Results appear in the job summary and as the `eval-results` artifact.
 
