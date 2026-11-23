@@ -1,6 +1,6 @@
 # RepoMind: project report & handoff
 
-> **Purpose of this file:** if you start a new conversation (with Claude, Codex or anyone), this file plus the repo is everything needed to continue. Last updated: 2026-11-19.
+> **Purpose of this file:** if you start a new conversation (with Claude, Codex or anyone), this file plus the repo is everything needed to continue. Last updated: 2026-11-23.
 
 ## 0. Paste this into a new conversation
 ```
@@ -16,7 +16,7 @@ before saying anything is done, and tell me plainly what you did not verify.
 
 **Why this project:** it is a resume project meant to show depth that the existing apps (MediFlow AI, SmartSpend AI, Roamly) don't: retrieval engineering, an agent loop written by hand, safety/guardrails, and measured evaluation. The owner's stack (C++, React, FastAPI, Node, Supabase, Gemini) is reused so the build is realistic.
 
-**Differentiators to emphasise:** hybrid retrieval beating a vector-only baseline *with numbers*; every citation verified against what the agent actually retrieved; sandboxed read-only tools; prompt-injection defence for untrusted repo content; budgets; approval gate; red-team eval set.
+**Differentiators to emphasise:** retrieval chosen by measurement (an ablation on a tune/held-out split showed vector-only beat hybrid on this repo, so vector is the default); every citation verified against what the agent actually retrieved; sandboxed read-only tools; prompt-injection defence for untrusted repo content; budgets; approval gate; red-team eval set.
 
 ## 2. Decisions
 | Decision | Made by | Notes |
@@ -89,7 +89,7 @@ backend/tests/   140 tests (no network/DB needed)
 ## 6. Key mechanisms
 **Agent protocol.** Each turn the LLM returns one JSON object `{"thought","action","args"}`. Actions: `search_code`, `read_file`, `find_symbol`, `list_dir`, `propose_change`, `final_answer{answer,found}`. Invalid JSON gets two corrective retries, then an `error`. The loop yields events; the API layer turns them into SSE and persists them.
 
-**Retrieval.** Vector search (Gemini `RETRIEVAL_QUERY` embedding, cosine) and keyword search (OR-ed identifier terms, `to_tsquery('simple')`) each fetch a pool of 30. Reciprocal Rank Fusion (k=60) merges them, then `symbol_boost_rerank` nudges chunks whose symbol or filename appears in the question. `mode=vector|keyword|hybrid` exists so evals can compare them.
+**Retrieval.** Vector search (Gemini `RETRIEVAL_QUERY` embedding, cosine) and keyword search (OR-ed identifier terms, `to_tsquery('simple')`) each fetch a pool of 30. Reciprocal Rank Fusion (k=60) merges them, then `symbol_boost_rerank` nudges chunks whose symbol or filename appears in the question. `mode=vector|keyword|hybrid` exists so evals can compare them. **The default is `vector`**: on the golden set, keyword fusion did not help (see `docs/EVALS.md`).
 
 **Chunking.** Python: stdlib `ast`, one chunk per top-level function/class (decorators included); classes over 120 lines are split into header + methods; leftover module-level code becomes `module` chunks. JS/TS/Go/Rust: top-level-definition regexes. Everything else: 60-line windows with 10-line overlap. Oversized chunks split at 120 lines. Each chunk is embedded with a `# file: … | kind: symbol` header.
 
@@ -112,12 +112,12 @@ backend/tests/   140 tests (no network/DB needed)
 **HITL.** The agent can only *propose* (`patch` or `issue`). `propose_change` ends the agent run and emits `approval_required` with an `action_id`. The human calls `POST /actions/{id}/decision` with `approve`, `edit` (plus `edited_payload`) or `reject`. State machine: `pending → approved | edited | rejected`, all terminal; a second decision returns 409; the DB update is `WHERE status='pending'` so it's atomic. Other HITL touchpoints: `needs_clarification` (low evidence / budget hit) asks the human to narrow the question; 👍/👎 + correction feedback is stored to grow the golden set.
 
 **Quota strategy (free tiers are the main constraint).**
-- *Two answer modes.* `fast` (default): one hybrid retrieval, then a single LLM call with a dedicated prompt (`agent/fast.py`); about 1 API call per question. `agent`: the full tool loop (3-6 calls), and the only mode that can propose changes. If fast mode can't ground an answer it returns `needs_clarification` with `suggest_mode:"agent"`.
+- *Two answer modes.* `fast` (default): one retrieval (vector by default, see `RETRIEVAL_MODE`), then a single LLM call with a dedicated prompt (`agent/fast.py`); about 1 API call per question. `agent`: the full tool loop (3-6 calls), and the only mode that can propose changes. If fast mode can't ground an answer it returns `needs_clarification` with `suggest_mode:"agent"`.
 - *Provider chain.* `CachingLLM( FallbackLLM([primary, fallback]) )` built by `build_llm()` in `agent/llm.py`. The fallback is used only for rate limits, 5xx and network errors (never for bad keys or malformed requests, so config mistakes aren't masked). A 429 with a long `Retry-After` (>20s) is treated as quota exhaustion and fails over immediately instead of sleeping.
 - *Disk cache.* LLM calls are cached on disk keyed by `sha256(model, system prompt, messages)`; query embeddings likewise (document embeddings live in Postgres). `LLM_CACHE=readwrite` (default) makes re-running evals nearly free; `replay` never calls the API (a miss raises `CacheMiss`), which makes eval runs deterministic and offline. Changing the prompt or retrieved code changes the key, so nothing goes stale silently.
 - *Token budget on Groq.* The binding free limit is tokens (8K/min, 200K/day on gpt-oss-120b), not requests. Search previews are capped at 30 lines per chunk and `LLM_MAX_OUTPUT_TOKENS=1500` to stay inside it. Short 429s are retried using `Retry-After`.
 
-**Evals.** Metrics (`evals/metrics.py`): `recall@k` = fraction of expected files in the top-k retrieved paths; `MRR`; `keyword_hit_rate`; latency p50/p95; cost/query; groundedness. Three runs: `--redteam` (offline), `--retrieval` (vector vs keyword vs hybrid), `--agent` (end-to-end). Results go to `backend/app/evals/results/<timestamp>.json` and print as markdown tables for the README.
+**Evals.** Metrics (`evals/metrics.py`): `recall@k` = fraction of expected files in the top-k retrieved paths; `MRR`; `keyword_hit_rate`; latency p50/p95; cost/query; groundedness. Runs: `--redteam` (offline), `--retrieval` (vector vs keyword vs hybrid), `--sweep` (RRF weight / prefix tune vs held-out), `--agent` with `--mode fast|agent` (end-to-end). Eval rows record `error_detail` and the answering `models`; a run aborts after 3 consecutive rate-limit failures, and results carry warnings when any question errored or more than one model answered. A manual GitHub Actions workflow (`.github/workflows/evals.yml`) runs them on Linux. Results go to `backend/app/evals/results/<timestamp>.json` and print as markdown tables for the README.
 
 **Auth & ownership.** `auth.py` verifies the Supabase access token (60s cache) and yields `User(id,email,login)`; `AUTH_REQUIRED=false` is local-dev only. Every query/trace/action/feedback row carries `user_id` and `store.py` filters on it (other users' ids → 404). RLS is enabled on all tables with no policies (the backend's DB role bypasses it; the point is that the public anon key can read nothing). Per-user rate limit and daily new-repo quota.
 
@@ -139,10 +139,10 @@ See `docs/API_CONTRACT.md` (authoritative). Summary: `POST /repos`, `GET /repos[
 - [ ] All SQL in `store.py` and `retrieval/hybrid.py`, `schema.sql` (never run against Postgres)
 - [ ] Full ingestion → embed → insert pipeline; hybrid search ranking quality
 - [ ] End-to-end `/ask` with a real LLM (the loop is tested with a fake LLM, not Gemini)
-- [ ] `--retrieval` and `--agent` eval runners
+- [x] Eval runners (`--retrieval`, `--sweep`, `--agent`) run live via GitHub Actions; one valid baseline exists, a clean end-to-end re-run on the vector default is pending (run 2 was invalidated by Groq rate limits)
 - [ ] Dockerfile build
 
-**Not built yet:** the frontend (Codex), deployment, golden set, LLM-as-judge faithfulness, tree-sitter chunking, LLM reranker, LLM-as-judge; fork-based PRs for repos the user can't write to. Built but **unverified live**: Supabase Auth + GitHub provider, the GitHub publish flow (tested only against a mock GitHub), the new `schema.sql` migrations.
+**Not built yet:** LLM-as-judge faithfulness, tree-sitter chunking, LLM reranker, LLM-as-judge; fork-based PRs for repos the user can't write to. Built but **unverified live**: Supabase Auth + GitHub provider, the GitHub publish flow (tested only against a mock GitHub), the new `schema.sql` migrations.
 
 ## 9. Next steps (in order; tick as you go)
 0. [ ] **Auth + GitHub setup.** In Supabase: Authentication → Providers → GitHub (create a GitHub OAuth App with callback `https://<project>.supabase.co/auth/v1/callback`, paste its client id/secret); add your site URL(s) to the redirect allow-list; set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (public key only) in `backend/.env`. Re-run `backend/sql/schema.sql` (idempotent). Then test publish on a **throwaway repo you own**.
@@ -172,6 +172,7 @@ backend" in FRONTEND_BRIEF.md instead of guessing.
 ## 11. Risks & gotchas
 - **Gemini names/SDK drift.** Verify `GEMINI_CHAT_MODEL`, `GEMINI_EMBED_MODEL`, the `embed_content` / `generate_content` call shapes, and that `EMBED_DIM` (768) matches the schema. If you change the dimension, change `vector(768)` in `schema.sql` too (and re-index).
 - **Free-tier quotas.** Google cut Gemini's free chat quota to ~20 requests/day (December 2025), which is why Gemini only does embeddings now; embeddings are a separate model with their own limit, and indexing batches 50 chunks per call. `MAX_CHUNKS_PER_REPO` (4000) caps indexing spend; a 1,500-chunk repo is ~30 embedding calls. Query embeddings are cached in memory and on disk.
+- **Observed 2026-11-23: a day of eval testing used ~247K tokens (205K uncached input), over the 200K/day cap; Groq then returned 429s and the OpenRouter free fallback was rate-limited too, so one eval run was invalid.** Budget one full fast-mode eval per day (~40-60K tokens), keep the fallback unset for evals so one model answers, and don't run agent-mode evals the same day.
 - **Groq limits are per model and mostly token-based** (8K TPM / 200K TPD on gpt-oss-120b at time of writing; sources disagree on some models, so trust your console). Agent mode sends growing context each step and can burn ~15-20K tokens per question, so use **fast mode** for demos and day-to-day, agent mode when you need it. Rate limits are per organization, not per key; extra keys/accounts don't add capacity (and creating them to dodge quotas is against provider terms).
 - **OpenRouter free models:** 20 req/min; 50 req/day until $10 of credits have ever been bought, then 1,000/day; failed attempts count toward the limit; a negative balance returns 402 even for free models.
 - **Cache vs. production correctness.** The LLM cache returns the same answer for the same prompt+code. Good for evals and demos; if you ever want fresh sampling, set `LLM_CACHE=off`.
@@ -190,10 +191,10 @@ backend" in FRONTEND_BRIEF.md instead of guessing.
 
 ## 12. Resume framing (fill in X/Y only after measuring; never invent numbers)
 > **RepoMind** · Agentic RAG codebase assistant · FastAPI, Supabase (pgvector), Gemini, vanilla JS
-> - Built hybrid retrieval (vector + full-text + reciprocal-rank fusion + symbol rerank), raising recall@5 from **X%** to **Y%** over a vector-only baseline on a **N**-question golden set
+> - Built a retrieval layer (pgvector + Postgres full-text with weighted reciprocal-rank fusion) and chose the default by ablation on a tune/held-out split of a **N**-question golden set: vector-only matched the best hybrid on held-out recall@5 (**0.92**), so I shipped the simpler option. *(Replace with end-to-end numbers only from a valid run; never claim hybrid beat vector.)*
 > - Implemented a hand-written tool-using agent loop with sandboxed read-only tools and verified `file:line` citations (invalid citations are retried or stripped; low-evidence answers escalate to the user)
 > - Added layered guardrails (prompt-injection and indirect-injection defence, secret redaction, step/token/time budgets, rate limiting) and a human-in-the-loop approval gate for proposed patches; blocked **A/B** adversarial prompts in a red-team suite
-> - Created an automated eval harness tracking recall@k, MRR, groundedness, p50/p95 latency and cost per query; **140** automated tests
+> - Created an automated eval harness tracking recall@k, MRR, groundedness, p50/p95 latency and cost per query; **300+** automated tests
 
 **Interview talking points:** why RRF instead of weighted sum of scores (different score scales); why a hand-written loop with JSON actions (testability, no vendor lock-in); how indirect prompt injection works and your layered defence; why HITL gates the side effect rather than pausing the agent; what the eval showed and what you'd improve (LLM judge, tree-sitter, reranker model); the Render ephemeral-disk trade-off.
 

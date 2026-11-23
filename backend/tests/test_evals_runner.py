@@ -144,3 +144,50 @@ def test_ex_errors_metrics_and_warning():
     assert "Warning: 2 of 4" in ev.to_markdown({"agent": s})
     clean = ev.summarize_agent_rows([row("a", "alpha", ["f1.py"])], QS[:1])
     assert "Warning" not in ev.to_markdown({"agent": clean})
+
+
+def test_models_recorded_and_mixed_models_warn(monkeypatch):
+    def fake_stream(repo, question, mode):
+        m = "primary:gpt-oss" if question == "p" else "fallback:gemma"
+        yield {"type": "answer", "text": "alpha", "citations": [{"path": "f1.py"}], "found": True, "groundedness": 0.9}
+        yield {"type": "done", "status": "completed", "usage": {"latency_ms": 5, "models": [m]}}
+
+    monkeypatch.setattr(service, "stream_answer", fake_stream)
+    qa, qb = {**QS[0], "question": "p"}, {**QS[1], "question": "f"}
+    one = ev.summarize_agent_rows([ev._ask_once({}, qa, "fast")], [qa], "fast")
+    assert one["models"] == ["primary:gpt-oss"] and "Model: `primary:gpt-oss`" in ev.to_markdown({"agent": one})
+    both = ev.summarize_agent_rows([ev._ask_once({}, qa, "fast"), ev._ask_once({}, qb, "fast")], [qa, qb], "fast")
+    assert len(both["models"]) == 2 and "more than one model" in ev.to_markdown({"agent": both})
+    assert both["rows"][1]["models"] == ["fallback:gemma"]
+
+
+def test_early_stop_after_three_consecutive_rate_limits(monkeypatch):
+    calls = {"n": 0}
+    monkeypatch.setattr(ev.time, "sleep", lambda s: None)
+    monkeypatch.setattr(store, "get_repo", lambda rid: {"id": rid})
+
+    def limited(repo, question, mode):
+        calls["n"] += 1
+        yield {"type": "error", "code": "rate_limited", "message": "m"}
+        yield {"type": "done", "status": "error", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", limited)
+    out = ev.run_agent_eval({"repo_id": "r", "questions": QS}, "fast")   # 5 questions planned
+    assert out["n"] == 3 and out["aborted"] is True and out["n_planned"] == 5
+    assert calls["n"] == 3 * (1 + ev.MAX_RATE_LIMIT_RETRIES)
+    assert "Run aborted after 3 of 5" in ev.to_markdown({"agent": out})
+
+
+def test_early_stop_streak_resets_on_success(monkeypatch):
+    monkeypatch.setattr(ev.time, "sleep", lambda s: None)
+    monkeypatch.setattr(store, "get_repo", lambda rid: {"id": rid})
+
+    def mixed(repo, question, mode):
+        yield {"type": "error", "code": "rate_limited", "message": "m"} if question.startswith("L") else {
+            "type": "answer", "text": "a", "citations": [], "found": True, "groundedness": 1.0}
+        yield {"type": "done", "status": "error" if question.startswith("L") else "completed", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", mixed)
+    qs = [{**QS[0], "id": f"x{i}", "question": ("L" if i in (0, 1, 3, 4) else "ok")} for i in range(6)]   # L,L,ok,L,L,ok: streak never reaches 3
+    out = ev.run_agent_eval({"repo_id": "r", "questions": qs}, "fast")
+    assert out["n"] == 6 and out["aborted"] is False

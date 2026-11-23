@@ -223,18 +223,34 @@ class FallbackLLM:
             raise ValueError("FallbackLLM needs at least one provider")
         self.providers = providers
         self.model_id = "|".join(getattr(p, "model_id", "?") for p in providers)
+        self.models_used: list[str] = []   # providers that actually returned an answer (eval rows record this)
 
     def complete(self, system: str, messages: list[dict]) -> LLMResult:
         last: Exception | None = None
         for p in self.providers:
             try:
-                return p.complete(system, messages)
+                res = p.complete(system, messages)
+                mid = getattr(p, "model_id", "?")
+                if mid not in self.models_used:
+                    self.models_used.append(mid)
+                return res
             except Exception as e:  # noqa: BLE001
                 if not is_transient(e):
                     raise
                 last = e
         assert last is not None
         raise last
+
+
+def models_used(llm) -> list[str]:
+    """Which model(s) produced this run's answers. A fallback chain reports only providers that answered,
+    so a silent switch to the fallback model is visible in eval results."""
+    inner = getattr(llm, "inner", llm)
+    used = getattr(inner, "models_used", None)
+    if used is not None:
+        return list(used)
+    mid = getattr(inner, "model_id", None)
+    return [mid] if mid else []
 
 
 def _is_valid_action(text: str) -> bool:

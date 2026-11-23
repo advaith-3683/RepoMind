@@ -76,7 +76,7 @@ def _ask_once(repo: dict, q: dict, mode: str) -> dict:
 
     t0 = time.monotonic()
     row = {"id": q["id"], "answer": "", "cited": [], "found": None, "groundedness": 0.0,
-           "status": None, "error": None, "error_detail": None, "usage": {}}
+           "status": None, "error": None, "error_detail": None, "models": [], "usage": {}}
     try:
         for ev in stream_answer(repo, q["question"], mode):
             if ev["type"] == "answer":
@@ -86,7 +86,7 @@ def _ask_once(repo: dict, q: dict, mode: str) -> dict:
                 row["error"] = ev.get("code")
                 row["error_detail"] = (ev.get("detail") or "")[:160] or None
             elif ev["type"] == "done":
-                row.update(status=ev.get("status"), usage=ev.get("usage", {}))
+                row.update(status=ev.get("status"), usage=ev.get("usage", {}), models=ev.get("usage", {}).get("models", []))
     except Exception as e:  # noqa: BLE001  (one bad question must not kill the whole run)
         row["error"] = f"exception:{type(e).__name__}"
         row["error_detail"] = str(e)[:160] or None
@@ -129,6 +129,7 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
         "decline_accuracy": (len(declined) / len(decl_rows)) if decl_rows else None,
         "error_rate": metrics.mean([1.0 if r["error"] else 0.0 for r in rows]),
         "n_errors": sum(1 for r in rows if r["error"]),
+        "models": sorted({m for r in rows for m in r.get("models", [])}),
         # Same metrics over questions that did NOT error (diagnostic only; the headline numbers above stay strict).
         "answer_rate_ex_errors": metrics.mean([1.0 if answered(r) else 0.0 for r in ok_ans]) if ok_ans else None,
         "decline_accuracy_ex_errors": (len(ok_declined) / len(ok_decl)) if ok_decl else None,
@@ -137,7 +138,7 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
         "avg_cost_usd": metrics.mean(cost),
         "avg_tokens": metrics.mean(toks),
         "rows": [{"id": r["id"], "status": r["status"], "found": r["found"], "error": r["error"],
-                  "error_detail": r.get("error_detail"), "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
+                  "error_detail": r.get("error_detail"), "models": r.get("models", []), "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
                  for r in rows],
     }
 
@@ -213,6 +214,7 @@ def sweep_markdown(sw: dict) -> str:
 
 
 MAX_RATE_LIMIT_RETRIES = 2
+EARLY_STOP_AFTER = 3   # consecutive questions that still hit a rate limit after all retries => quota is gone, abort
 
 
 def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limit: int | None = None) -> dict:
@@ -223,7 +225,7 @@ def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limi
 
     repo = store.get_repo(golden["repo_id"])
     questions = golden["questions"][:limit] if limit else golden["questions"]
-    rows = []
+    rows, streak, aborted = [], 0, False
     for i, q in enumerate(questions):
         if i and sleep_s:
             time.sleep(sleep_s)
@@ -238,7 +240,13 @@ def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limi
         if retried:
             row["retried"] = True
         rows.append(row)
-    return summarize_agent_rows(rows, questions, mode)
+        streak = streak + 1 if row["error"] == "rate_limited" else 0
+        if streak >= EARLY_STOP_AFTER and i < len(questions) - 1:
+            aborted = True   # more attempts only burn quota and produce a meaningless result
+            break
+    summary = summarize_agent_rows(rows, questions[:len(rows)], mode)
+    summary["aborted"], summary["n_planned"] = aborted, len(questions)
+    return summary
 
 
 def resolve_repo_id(golden: dict, repo_url: str | None = None) -> str:
@@ -287,6 +295,15 @@ def to_markdown(results: dict) -> str:
                   f"| error rate | {a['error_rate']:.0%} ({a.get('n_errors', 0)} errored) |",
                   f"| latency p50 / p95 | {a['latency_p50_ms']:.0f} / {a['latency_p95_ms']:.0f} ms |",
                   f"| avg cost / query | ${a['avg_cost_usd']:.4f} |", ""]
+        if a.get("aborted"):
+            lines += [f"> **Run aborted after {a['n']} of {a['n_planned']} questions: {EARLY_STOP_AFTER} in a row hit the "
+                      "provider rate limit even after retries.** The numbers cover only the questions that ran. "
+                      "Not a valid result; wait for the quota to reset.", ""]
+        if len(a.get("models", [])) > 1:
+            lines += ["> **Warning: answers came from more than one model (" + ", ".join(a["models"]) + ").** "
+                      "Do not report this as a single-model result.", ""]
+        elif a.get("models"):
+            lines += [f"Model: `{a['models'][0]}`", ""]
         if a.get("n_errors"):
             ex, dx = a.get("answer_rate_ex_errors"), a.get("decline_accuracy_ex_errors")
             lines += [f"> **Warning: {a['n_errors']} of {a['n']} questions errored (e.g. provider rate limits).** "

@@ -29,8 +29,10 @@ cd backend
 python -m app.evals.run --redteam
 python -m app.evals.run --retrieval --agent --golden app/evals/golden_smartspend.json --mode fast --sleep 25 --limit 3
 ```
-Free-tier Groq allows ~8K tokens/minute, so `--sleep` matters; a rate-limit error is retried once after 65 s and reported in
-the error rate if it persists. `LLM_CACHE=off` gives honest numbers; the cache is for cheap reruns.
+Free-tier Groq allows ~8K tokens/minute and 200K tokens/day, so `--sleep` matters; a rate-limit error is retried up to twice, 65 s apart,
+and reported in the error rate if it persists. The run aborts after 3 consecutive questions that still hit the limit. Each row records
+`error_detail` and the `models` that answered. Keep `LLM_FALLBACK_API_KEY` unset for evals: a silent switch to a different model
+would mix models in one result (the summary warns if that happens). `LLM_CACHE=off` gives honest numbers; the cache is for cheap reruns.
 
 ## Results so far (smartspendAI, 27 answerable + 5 should-decline questions; Groq `openai/gpt-oss-120b`, fast mode)
 
@@ -58,3 +60,10 @@ Finding: on this repo, keyword fusion did not help and equal-weight fusion hurt,
 (`RETRIEVAL_MODE=vector`; set `hybrid` to re-enable). Limits: one repository, natural-language questions written by the
 project owner, 27 answerable questions, so differences of a few points are noise. Keyword search may still help
 identifier-style queries (the agent's `find_symbol` tool covers those); this set does not test that.
+
+## Run 2 (2026-11-23, vector default): INVALID, do not cite
+7 of 32 questions ended in `rate_limited` even after a retry (answer rate 74%, error rate 22%, declined 40%), so those numbers measure
+the provider limit, not answer quality. Cause: that day's testing used ~247K Groq tokens against a 200K/day cap, and the OpenRouter
+free fallback (a different model, `google/gemma-4-31b-it:free`) was also rate-limited and ignored the citation format. On the 23 questions
+that did not error, 20 were answered versus 19 in run 1, which is within noise. A valid vector-default end-to-end run is still to be done:
+one full fast-mode run on a fresh quota day, no fallback key, `limit 3` first.

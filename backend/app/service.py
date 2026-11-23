@@ -7,7 +7,7 @@ from .agent.fast import run_fast
 from .auth import ANON_USER_ID
 from .guardrails.sandbox import resolve_in_repo
 from .hitl.patching import apply_edits, make_diff
-from .agent.llm import LLMError, build_llm, is_rate_limit
+from .agent.llm import LLMError, build_llm, is_rate_limit, models_used
 from .agent.loop import run_agent
 from .agent.state import EvidenceStore
 from .agent.tools import RepoTools
@@ -118,4 +118,4 @@ def stream_answer(repo: dict, question: str, mode: str | None = None, user_id: s
     yield {"type": "done", "query_id": str(query_id), "status": status, "mode": mode,
            "usage": {"steps": budget.steps, "tokens_in": budget.tokens_in, "tokens_out": budget.tokens_out,
                      "latency_ms": budget.elapsed_ms, "cost_usd": round(cost, 6),
-                     "llm_cache_hits": getattr(llm, "hits", 0)}}
+                     "llm_cache_hits": getattr(llm, "hits", 0), "models": models_used(llm)}}

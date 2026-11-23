@@ -334,3 +334,21 @@ def test_empty_content_falls_back_to_reasoning_field():
 
     res = make(handler).complete("s", [])
     assert parse_action(res.text).name == "search_code"
+
+
+def test_fallback_records_which_model_answered():
+    from app.agent.llm import FallbackLLM, LLMResult, RateLimitError, models_used
+
+    class P:
+        def __init__(self, mid, fail=False):
+            self.model_id, self.fail = mid, fail
+
+        def complete(self, system, messages):
+            if self.fail:
+                raise RateLimitError("429", 429)
+            return LLMResult("x")
+
+    llm = FallbackLLM([P("primary:a", fail=True), P("fallback:b")])
+    llm.complete("s", [])
+    assert models_used(llm) == ["fallback:b"]          # primary never answered
+    assert models_used(P("solo:c")) == ["solo:c"]
