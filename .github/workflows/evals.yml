@@ -1,0 +1,66 @@
+name: evals
+
+# Manual only: evals call real LLM / embedding APIs and read the Supabase index, so they never run on push.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Answer mode for the end-to-end run"
+        type: choice
+        options: [fast, agent]
+        default: fast
+      sleep:
+        description: "Seconds between questions (Groq free tier is ~8K tokens/minute)"
+        default: "25"
+      limit:
+        description: "Only the first N questions (0 = all). Use 3 for a smoke test."
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      AUTH_REQUIRED: "false"
+      LLM_CACHE: "off"                 # measure real calls, not cached answers
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+      LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+      GITHUB_API_TOKEN: ${{ github.token }}   # read-only token for the public-repo pre-check (avoids the 60/h anonymous limit)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m pytest -q
+      - name: Evals
+        run: |
+          set -o pipefail
+          LIMIT="${{ inputs.limit }}"
+          ARGS="--redteam --retrieval --agent --golden app/evals/golden_smartspend.json --mode ${{ inputs.mode }} --sleep ${{ inputs.sleep }}"
+          if [ "$LIMIT" != "0" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+          python -m app.evals.run $ARGS | tee eval-output.md
+          { echo "## RepoMind evals (${{ inputs.mode }} mode, limit ${{ inputs.limit }})"; cat eval-output.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: |
+            backend/eval-output.md
+            backend/app/evals/results/*.json

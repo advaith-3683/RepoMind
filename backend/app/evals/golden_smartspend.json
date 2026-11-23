@@ -1,0 +1,339 @@
+{
+  "_comment": "Golden set for advaith-3683/smartspendAI. expected_files are index paths (note the spaces in folder names). expected_keywords are lower-case terms a correct answer should mention. should_decline questions have NO answer in the repo: a correct system says it cannot find it. Verified against commit 4a860dd.",
+  "repo_url": "https://github.com/advaith-3683/smartspendAI",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "How does a user log in and get a session?",
+      "expected_files": [
+        "smartspend backend/main.py",
+        "smartspend backend/auth.py"
+      ],
+      "expected_keywords": [
+        "cookie",
+        "session"
+      ]
+    },
+    {
+      "id": "q02",
+      "question": "How are passwords hashed?",
+      "expected_files": [
+        "smartspend backend/auth.py"
+      ],
+      "expected_keywords": [
+        "scrypt",
+        "salt"
+      ]
+    },
+    {
+      "id": "q03",
+      "question": "How are session tokens stored and validated?",
+      "expected_files": [
+        "smartspend backend/auth.py"
+      ],
+      "expected_keywords": [
+        "sha256",
+        "expires"
+      ]
+    },
+    {
+      "id": "q04",
+      "question": "How does the API make sure a user can only access their own data?",
+      "expected_files": [
+        "smartspend backend/auth.py"
+      ],
+      "expected_keywords": [
+        "authorize",
+        "user_id"
+      ]
+    },
+    {
+      "id": "q05",
+      "question": "How is the spending pace for a budget category calculated?",
+      "expected_files": [
+        "smartspend backend/services.py"
+      ],
+      "expected_keywords": [
+        "pace",
+        "budget"
+      ]
+    },
+    {
+      "id": "q06",
+      "question": "How does the app decide whether a purchase is affordable?",
+      "expected_files": [
+        "smartspend backend/services.py"
+      ],
+      "expected_keywords": [
+        "purchase",
+        "budget"
+      ]
+    },
+    {
+      "id": "q07",
+      "question": "How are SMS bank alerts parsed into transactions?",
+      "expected_files": [
+        "smartspend backend/ingestion.py"
+      ],
+      "expected_keywords": [
+        "amount",
+        "merchant"
+      ]
+    },
+    {
+      "id": "q08",
+      "question": "How are bank statement CSV files imported?",
+      "expected_files": [
+        "smartspend backend/ingestion.py"
+      ],
+      "expected_keywords": [
+        "csv",
+        "column"
+      ]
+    },
+    {
+      "id": "q09",
+      "question": "How are PDF statements handled?",
+      "expected_files": [
+        "smartspend backend/ingestion.py"
+      ],
+      "expected_keywords": [
+        "pdf"
+      ]
+    },
+    {
+      "id": "q10",
+      "question": "How are imported transactions automatically categorized?",
+      "expected_files": [
+        "smartspend backend/ingestion.py"
+      ],
+      "expected_keywords": [
+        "keyword",
+        "uncategorized"
+      ]
+    },
+    {
+      "id": "q11",
+      "question": "How is the AI coach prompt built from the user's spending?",
+      "expected_files": [
+        "smartspend backend/llm_coach.py"
+      ],
+      "expected_keywords": [
+        "prompt",
+        "budget"
+      ]
+    },
+    {
+      "id": "q12",
+      "question": "What happens when the AI service fails or is unavailable?",
+      "expected_files": [
+        "smartspend backend/llm_coach.py"
+      ],
+      "expected_keywords": [
+        "fallback",
+        "recorded"
+      ]
+    },
+    {
+      "id": "q13",
+      "question": "How is the weekly spending digest computed?",
+      "expected_files": [
+        "smartspend backend/services.py"
+      ],
+      "expected_keywords": [
+        "week"
+      ]
+    },
+    {
+      "id": "q14",
+      "question": "How are recurring subscriptions detected?",
+      "expected_files": [
+        "smartspend backend/services.py"
+      ],
+      "expected_keywords": [
+        "recurring",
+        "subscription"
+      ]
+    },
+    {
+      "id": "q15",
+      "question": "How does the savings goal planner work?",
+      "expected_files": [
+        "smartspend backend/services.py"
+      ],
+      "expected_keywords": [
+        "target",
+        "months"
+      ]
+    },
+    {
+      "id": "q16",
+      "question": "How are unusual spending spikes detected?",
+      "expected_files": [
+        "smartspend backend/services.py"
+      ],
+      "expected_keywords": [
+        "spike"
+      ]
+    },
+    {
+      "id": "q17",
+      "question": "How does the app mark a bill as paid?",
+      "expected_files": [
+        "smartspend backend/services.py",
+        "smartspend backend/main.py"
+      ],
+      "expected_keywords": [
+        "paid",
+        "bill"
+      ]
+    },
+    {
+      "id": "q18",
+      "question": "How does the app connect to the database and choose between SQLite and PostgreSQL?",
+      "expected_files": [
+        "smartspend backend/database.py"
+      ],
+      "expected_keywords": [
+        "sqlite",
+        "postgres"
+      ]
+    },
+    {
+      "id": "q19",
+      "question": "How is money stored in the database?",
+      "expected_files": [
+        "smartspend backend/money.py"
+      ],
+      "expected_keywords": [
+        "decimal",
+        "bigint"
+      ]
+    },
+    {
+      "id": "q20",
+      "question": "Which database tables does the app define?",
+      "expected_files": [
+        "smartspend backend/models.py"
+      ],
+      "expected_keywords": [
+        "budget",
+        "transaction"
+      ]
+    },
+    {
+      "id": "q21",
+      "question": "How are PostgreSQL migrations run and verified?",
+      "expected_files": [
+        "smartspend backend/postgres_storage.py",
+        "smartspend backend/manage_database.py"
+      ],
+      "expected_keywords": [
+        "migrate",
+        "verify"
+      ]
+    },
+    {
+      "id": "q22",
+      "question": "How does the frontend send requests to the backend API?",
+      "expected_files": [
+        "smartspend frontend/src/api.js"
+      ],
+      "expected_keywords": [
+        "fetch",
+        "credentials"
+      ]
+    },
+    {
+      "id": "q23",
+      "question": "How does the voice entry feature capture speech?",
+      "expected_files": [
+        "smartspend frontend/src/voiceCapture.js"
+      ],
+      "expected_keywords": [
+        "speech"
+      ]
+    },
+    {
+      "id": "q24",
+      "question": "How are API requests rate limited and size limited?",
+      "expected_files": [
+        "smartspend backend/main.py"
+      ],
+      "expected_keywords": [
+        "rate limit",
+        "429"
+      ]
+    },
+    {
+      "id": "q25",
+      "question": "How is the Render deployment configured?",
+      "expected_files": [
+        "render.yaml",
+        "DEPLOYMENT.md"
+      ],
+      "expected_keywords": [
+        "render",
+        "database_url"
+      ]
+    },
+    {
+      "id": "q26",
+      "question": "How does the frontend show the user's burn rate?",
+      "expected_files": [
+        "smartspend frontend/src/components/BurnGauge.jsx",
+        "smartspend frontend/src/components/BurnAlertBanner.jsx"
+      ],
+      "expected_keywords": [
+        "burn"
+      ]
+    },
+    {
+      "id": "q27",
+      "question": "How can the AI coach log an expense on the user's behalf?",
+      "expected_files": [
+        "smartspend backend/llm_coach.py",
+        "smartspend backend/main.py"
+      ],
+      "expected_keywords": [
+        "log_expense",
+        "proposal"
+      ]
+    },
+    {
+      "id": "d1",
+      "question": "Does the app integrate with Stripe for payments?",
+      "expected_files": [],
+      "expected_keywords": [],
+      "should_decline": true
+    },
+    {
+      "id": "d2",
+      "question": "How does the app send push notifications to users' phones?",
+      "expected_files": [],
+      "expected_keywords": [],
+      "should_decline": true
+    },
+    {
+      "id": "d3",
+      "question": "Where is the Kubernetes deployment configuration?",
+      "expected_files": [],
+      "expected_keywords": [],
+      "should_decline": true
+    },
+    {
+      "id": "d4",
+      "question": "How does the app implement two-factor authentication with TOTP?",
+      "expected_files": [],
+      "expected_keywords": [],
+      "should_decline": true
+    },
+    {
+      "id": "d5",
+      "question": "Which Redis cache keys does the app use?",
+      "expected_files": [],
+      "expected_keywords": [],
+      "should_decline": true
+    }
+  ]
+}

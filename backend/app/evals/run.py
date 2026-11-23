@@ -3,6 +3,7 @@
   python -m app.evals.run --redteam                         # offline, no DB / API needed
   python -m app.evals.run --retrieval --golden app/evals/golden_set.json   # vector vs keyword vs hybrid (needs DB + Gemini)
   python -m app.evals.run --agent     --golden app/evals/golden_set.json   # end-to-end agent (needs DB + Gemini)
+  add --mode fast|agent --sleep 20 (pace for free-tier limits) --limit 3 (smoke test) --repo-url <url>
 
 Results are written to app/evals/results/<timestamp>.json and printed as a markdown table.
 The --retrieval / --agent paths need live services and are NOT covered by unit tests."""
@@ -55,7 +56,7 @@ def run_retrieval(golden: dict, ks=(1, 3, 5)) -> dict:
         for mode in ("vector", "keyword", "hybrid"):
             per_k = {k: [] for k in ks}
             rr = []
-            for q in golden["questions"]:
+            for q in _answerable(golden):
                 hits = hybrid_search(conn, golden["repo_id"], q["question"], emb, k=max(ks), pool=s.retrieval_pool, mode=mode)
                 paths = [h.path for h in hits]
                 for k in ks:
@@ -65,46 +66,113 @@ def run_retrieval(golden: dict, ks=(1, 3, 5)) -> dict:
     return out
 
 
-def run_agent_eval(golden: dict, mode: str = "agent") -> dict:
-    from ..service import stream_answer
-    from .. import store
+def _answerable(golden: dict) -> list[dict]:
+    """Questions that have a correct answer in the repo (decline questions are scored separately)."""
+    return [q for q in golden["questions"] if not q.get("should_decline")]
 
-    repo = store.get_repo(golden["repo_id"])
-    rows = []
-    for q in golden["questions"]:
-        t0 = time.monotonic()
-        answer, done, status = "", {}, "?"
-        cited: list[str] = []
-        groundedness = 0.0
+
+def _ask_once(repo: dict, q: dict, mode: str) -> dict:
+    from ..service import stream_answer
+
+    t0 = time.monotonic()
+    row = {"id": q["id"], "answer": "", "cited": [], "found": None, "groundedness": 0.0,
+           "status": None, "error": None, "usage": {}}
+    try:
         for ev in stream_answer(repo, q["question"], mode):
             if ev["type"] == "answer":
-                answer = ev["text"]
-                cited = [c["path"] for c in ev["citations"]]
-                groundedness = ev["groundedness"]
+                row.update(answer=ev["text"], cited=[c["path"] for c in ev.get("citations", [])],
+                           found=ev.get("found", True), groundedness=ev.get("groundedness", 0.0))
+            elif ev["type"] == "error":
+                row["error"] = ev.get("code")
             elif ev["type"] == "done":
-                done = ev
-        rows.append({
-            "id": q["id"],
-            "status": done.get("status"),
-            "file_recall": metrics.recall_at_k(cited, q["expected_files"], len(cited) or 1),
-            "keyword_hit": metrics.keyword_hit_rate(answer, q.get("expected_keywords", [])),
-            "groundedness": groundedness,
-            "latency_ms": done.get("usage", {}).get("latency_ms", int((time.monotonic() - t0) * 1000)),
-            "cost_usd": done.get("usage", {}).get("cost_usd", 0.0),
-            "tokens": done.get("usage", {}).get("tokens_in", 0) + done.get("usage", {}).get("tokens_out", 0),
-        })
+                row.update(status=ev.get("status"), usage=ev.get("usage", {}))
+    except Exception as e:  # noqa: BLE001  (one bad question must not kill the whole run)
+        row["error"] = f"exception:{type(e).__name__}"
+    row["latency_ms"] = row["usage"].get("latency_ms", int((time.monotonic() - t0) * 1000))
+    return row
+
+
+def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "agent") -> dict:
+    """Pure aggregation (unit-tested). Unanswered/errored answerable questions count as 0 recall, so
+    the headline numbers cannot be inflated by only scoring the questions that happened to work."""
+    by_id = {q["id"]: q for q in questions}
+    ans_rows = [r for r in rows if not by_id[r["id"]].get("should_decline")]
+    decl_rows = [r for r in rows if by_id[r["id"]].get("should_decline")]
+
+    def answered(r):
+        return bool(r["answer"]) and r["found"] is not False and r["status"] == "completed"
+
+    recalls, hits = [], []
+    for r in ans_rows:
+        q = by_id[r["id"]]
+        ok = answered(r)
+        recalls.append(metrics.recall_at_k(r["cited"], q.get("expected_files", []), len(r["cited"]) or 1) if ok else 0.0)
+        hits.append(metrics.keyword_hit_rate(r["answer"], q.get("expected_keywords", [])) if ok else 0.0)
+    declined = [r for r in decl_rows if r["found"] is False or r["status"] == "needs_clarification"]
     lat = [r["latency_ms"] for r in rows]
+    cost = [r["usage"].get("cost_usd", 0.0) for r in rows]
+    toks = [r["usage"].get("tokens_in", 0) + r["usage"].get("tokens_out", 0) for r in rows]
     return {
         "mode": mode,
         "n": len(rows),
-        "file_recall": metrics.mean([r["file_recall"] for r in rows]),
-        "keyword_hit": metrics.mean([r["keyword_hit"] for r in rows]),
-        "groundedness": metrics.mean([r["groundedness"] for r in rows]),
+        "n_answerable": len(ans_rows),
+        "n_should_decline": len(decl_rows),
+        "answer_rate": metrics.mean([1.0 if answered(r) else 0.0 for r in ans_rows]),
+        "file_recall": metrics.mean(recalls),
+        "keyword_hit": metrics.mean(hits),
+        "groundedness": metrics.mean([r["groundedness"] for r in ans_rows if answered(r)]),
+        "decline_accuracy": (len(declined) / len(decl_rows)) if decl_rows else None,
+        "error_rate": metrics.mean([1.0 if r["error"] else 0.0 for r in rows]),
         "latency_p50_ms": metrics.percentile(lat, 50),
         "latency_p95_ms": metrics.percentile(lat, 95),
-        "avg_cost_usd": metrics.mean([r["cost_usd"] for r in rows]),
-        "rows": rows,
+        "avg_cost_usd": metrics.mean(cost),
+        "avg_tokens": metrics.mean(toks),
+        "rows": [{"id": r["id"], "status": r["status"], "found": r["found"], "error": r["error"],
+                  "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
+                 for r in rows],
     }
+
+
+def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limit: int | None = None) -> dict:
+    """sleep_s paces questions (free-tier LLM limits are per minute). A provider rate-limit error is
+    retried once after the minute window; it is still reported in error_rate/retried if it persists."""
+    from .. import store
+
+    repo = store.get_repo(golden["repo_id"])
+    questions = golden["questions"][:limit] if limit else golden["questions"]
+    rows = []
+    for i, q in enumerate(questions):
+        if i and sleep_s:
+            time.sleep(sleep_s)
+        row = _ask_once(repo, q, mode)
+        if row["error"] == "rate_limited":
+            time.sleep(max(sleep_s, 65))
+            row = _ask_once(repo, q, mode)
+            row["retried"] = True
+        rows.append(row)
+    return summarize_agent_rows(rows, questions, mode)
+
+
+def resolve_repo_id(golden: dict, repo_url: str | None = None) -> str:
+    """repo_id from the golden file, or look it up by URL (--repo-url / golden['repo_url']). The repo must be
+    indexed and ready: evals never trigger indexing."""
+    from .. import store
+
+    url = repo_url or golden.get("repo_url")
+    if url:
+        from ..ingestion.clone import parse_github_url
+
+        owner, name = parse_github_url(url)
+        repo = store.get_repo_by_url(f"https://github.com/{owner}/{name}")
+        if not repo:
+            raise SystemExit(f"{url} is not indexed. Add it in the app first and wait for 'Ready'.")
+        if repo["status"] != "ready":
+            raise SystemExit(f"{url} is '{repo['status']}', not 'ready'.")
+        return str(repo["id"])
+    rid = golden.get("repo_id", "")
+    if not rid or rid.startswith("PUT-"):
+        raise SystemExit("Golden file needs 'repo_url' (or a real 'repo_id'), or pass --repo-url.")
+    return rid
 
 
 def to_markdown(results: dict) -> str:
@@ -122,8 +190,11 @@ def to_markdown(results: dict) -> str:
     if "agent" in results:
         a = results["agent"]
         lines += [f"### End-to-end ({a.get('mode', 'agent')} mode)", "| metric | value |", "|---|---|",
-                  f"| questions | {a['n']} |", f"| file recall | {a['file_recall']:.2f} |",
+                  f"| questions (answerable / should decline) | {a['n']} ({a['n_answerable']} / {a['n_should_decline']}) |",
+                  f"| answer rate | {a['answer_rate']:.0%} |", f"| file recall | {a['file_recall']:.2f} |",
                   f"| keyword hit | {a['keyword_hit']:.2f} |", f"| groundedness | {a['groundedness']:.2f} |",
+                  "| correctly declined | " + ("n/a" if a["decline_accuracy"] is None else f"{a['decline_accuracy']:.0%}") + " |",
+                  f"| error rate | {a['error_rate']:.0%} |",
                   f"| latency p50 / p95 | {a['latency_p50_ms']:.0f} / {a['latency_p95_ms']:.0f} ms |",
                   f"| avg cost / query | ${a['avg_cost_usd']:.4f} |", ""]
     return "\n".join(lines)
@@ -136,18 +207,25 @@ def main() -> None:
     ap.add_argument("--agent", action="store_true")
     ap.add_argument("--golden", default=str(HERE / "golden_set.json"))
     ap.add_argument("--mode", choices=["fast", "agent"], default="agent", help="answer mode for --agent runs")
+    ap.add_argument("--sleep", type=float, default=0.0, help="seconds between questions (free-tier LLM limits)")
+    ap.add_argument("--limit", type=int, default=None, help="only the first N questions (smoke test)")
+    ap.add_argument("--repo-url", default=None, help="look up the indexed repo by URL instead of repo_id in the golden file")
     args = ap.parse_args()
     if not (args.redteam or args.retrieval or args.agent):
         ap.error("choose at least one of --redteam --retrieval --agent")
 
     results: dict = {"timestamp": datetime.now(timezone.utc).isoformat()}
     golden = json.loads(Path(args.golden).read_text()) if (args.retrieval or args.agent) else None
+    if golden is not None:
+        golden["repo_id"] = resolve_repo_id(golden, args.repo_url)
+        if args.limit:
+            golden["questions"] = golden["questions"][: args.limit]
     if args.redteam:
         results["redteam"] = run_redteam()
     if args.retrieval:
         results["retrieval"] = run_retrieval(golden)
     if args.agent:
-        results["agent"] = run_agent_eval(golden, args.mode)
+        results["agent"] = run_agent_eval(golden, args.mode, args.sleep)
 
     RESULTS.mkdir(exist_ok=True)
     out = RESULTS / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.json"
