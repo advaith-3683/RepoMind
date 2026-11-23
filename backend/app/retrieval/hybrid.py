@@ -41,9 +41,24 @@ def query_terms(question: str) -> list[str]:
     return terms[:12]
 
 
-def build_or_tsquery(question: str) -> str:
-    """'login user' -> 'login | user' (to_tsquery syntax). Empty string if nothing usable."""
-    return " | ".join(query_terms(question))
+_SUFFIXES = ("ations", "ation", "ings", "ing", "ied", "ies", "ed", "es", "s")
+
+
+def _stem(term: str) -> str:
+    """Crude suffix strip so 'hashed'/'validated' can match 'hash'/'validate' via prefix search."""
+    for suf in _SUFFIXES:
+        if term.endswith(suf) and len(term) - len(suf) >= 4:
+            return term[: -len(suf)]
+    return term
+
+
+def build_or_tsquery(question: str, prefix: bool = False) -> str:
+    """'login user' -> 'login | user' (to_tsquery syntax). Empty string if nothing usable.
+    prefix=True: 'hashed' -> 'hash:*' (plain alphanumeric terms only; the 'simple' index has no stemming)."""
+    terms = query_terms(question)
+    if prefix:
+        terms = [(_stem(t) + ":*") if t.isalnum() else t for t in terms]
+    return " | ".join(terms)
 
 
 def symbol_boost_rerank(question: str, hits: list[Hit]) -> list[Hit]:
@@ -81,8 +96,8 @@ def vector_search(conn, repo_id, query_vec: list[float], limit: int) -> list[Hit
     return [_row_to_hit(r) for r in rows]
 
 
-def keyword_search(conn, repo_id, question: str, limit: int) -> list[Hit]:
-    q = build_or_tsquery(question)
+def keyword_search(conn, repo_id, question: str, limit: int, prefix: bool = False) -> list[Hit]:
+    q = build_or_tsquery(question, prefix)
     if not q:
         return []
     rows = conn.execute(
@@ -102,22 +117,10 @@ def find_symbols(conn, repo_id, name: str, limit: int = 15) -> list[Hit]:
     return [_row_to_hit(r) for r in rows]
 
 
-def hybrid_search(conn, repo_id, question: str, embedder, k: int = 5, pool: int = 30,
-                  mode: str = "hybrid") -> list[Hit]:
-    """mode: 'vector' (baseline), 'keyword', or 'hybrid' (vector + keyword + RRF + rerank)."""
-    vec_hits = keyword_hits = []
-    if mode in ("vector", "hybrid"):
-        vec_hits = vector_search(conn, repo_id, embedder.embed_query(question), pool)
-    if mode in ("keyword", "hybrid"):
-        keyword_hits = keyword_search(conn, repo_id, question, pool)
-
+def fuse(vec_hits: list[Hit], keyword_hits: list[Hit], question: str, kw_weight: float = 1.0) -> list[Hit]:
+    """Weighted RRF of the two candidate lists, then the symbol/filename rerank. Best first."""
     by_id = {h.id: h for h in vec_hits + keyword_hits}
-    if mode == "vector":
-        return vec_hits[:k]
-    if mode == "keyword":
-        return keyword_hits[:k]
-
-    fused = reciprocal_rank_fusion([[h.id for h in vec_hits], [h.id for h in keyword_hits]])
+    fused = reciprocal_rank_fusion([[h.id for h in vec_hits], [h.id for h in keyword_hits]], weights=[1.0, kw_weight])
     vec_ids = {h.id for h in vec_hits}
     kw_ids = {h.id for h in keyword_hits}
     hits = []
@@ -126,4 +129,26 @@ def hybrid_search(conn, repo_id, question: str, embedder, k: int = 5, pool: int 
         h.score = score
         h.sources = tuple(s for s, ids in (("vector", vec_ids), ("keyword", kw_ids)) if cid in ids)
         hits.append(h)
-    return symbol_boost_rerank(question, hits)[:k]
+    return symbol_boost_rerank(question, hits)
+
+
+def hybrid_search(conn, repo_id, question: str, embedder, k: int = 5, pool: int = 30,
+                  mode: str = "hybrid", kw_weight: float | None = None, prefix: bool | None = None) -> list[Hit]:
+    """mode: 'vector' (baseline), 'keyword', or 'hybrid' (vector + keyword + weighted RRF + rerank).
+    kw_weight / prefix default to the settings (RRF_KEYWORD_WEIGHT, KEYWORD_PREFIX_MATCH)."""
+    if kw_weight is None or prefix is None:
+        from ..config import get_settings
+
+        st = get_settings()
+        kw_weight = st.rrf_keyword_weight if kw_weight is None else kw_weight
+        prefix = st.keyword_prefix_match if prefix is None else prefix
+    vec_hits = keyword_hits = []
+    if mode in ("vector", "hybrid"):
+        vec_hits = vector_search(conn, repo_id, embedder.embed_query(question), pool)
+    if mode in ("keyword", "hybrid"):
+        keyword_hits = keyword_search(conn, repo_id, question, pool, prefix)
+    if mode == "vector":
+        return vec_hits[:k]
+    if mode == "keyword":
+        return keyword_hits[:k]
+    return fuse(vec_hits, keyword_hits, question, kw_weight)[:k]

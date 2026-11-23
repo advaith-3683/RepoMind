@@ -133,6 +133,76 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
     }
 
 
+def split_questions(questions: list[dict]) -> tuple[list[dict], list[dict]]:
+    """First half = tune set (used to PICK settings), second half = held-out test set (only REPORTED)."""
+    cut = (len(questions) + 1) // 2
+    return questions[:cut], questions[cut:]
+
+
+def score_rankings(rankings: list[tuple[list[str], list[str]]], ks=(1, 3, 5)) -> dict:
+    """rankings = [(retrieved_paths, expected_paths)]. Pure; unit-tested."""
+    out = {f"recall@{k}": metrics.mean([metrics.recall_at_k(r, e, k) for r, e in rankings]) for k in ks}
+    out["mrr"] = metrics.mean([metrics.reciprocal_rank(r, e) for r, e in rankings])
+    return out
+
+
+def pick_best(variants: list[dict]) -> dict:
+    """Choose by TUNE-set recall@5 + MRR only; ties go to the smaller keyword weight (simpler, closer to vector)."""
+    return max(variants, key=lambda v: (round(v["tune"]["recall@5"] + v["tune"]["mrr"], 6), -v["kw_weight"], not v["prefix"]))
+
+
+SWEEP_WEIGHTS = (0.0, 0.1, 0.25, 0.5, 1.0)
+
+
+def run_retrieval_sweep(golden: dict) -> dict:
+    from ..config import get_settings
+    from ..db import get_conn
+    from ..retrieval.hybrid import fuse, keyword_search, vector_search
+    from ..service import get_embedder
+
+    s, emb = get_settings(), get_embedder()
+    qs = _answerable(golden)
+    tune_q, test_q = split_questions(qs)
+    tune_ids = {q["id"] for q in tune_q}
+    cand: dict[str, tuple] = {}
+    with get_conn() as conn:
+        for q in qs:   # candidate lists fetched once per question, then re-fused offline for every setting
+            vec = vector_search(conn, golden["repo_id"], emb.embed_query(q["question"]), s.retrieval_pool)
+            cand[q["id"]] = (vec, keyword_search(conn, golden["repo_id"], q["question"], s.retrieval_pool, False),
+                             keyword_search(conn, golden["repo_id"], q["question"], s.retrieval_pool, True))
+
+    def evaluate(rank_fn) -> dict:
+        per = {"tune": [], "test": []}
+        for q in qs:
+            paths = [h.path for h in rank_fn(q)]
+            per["tune" if q["id"] in tune_ids else "test"].append((paths, q["expected_files"]))
+        return {"tune": score_rankings(per["tune"]), "test": score_rankings(per["test"]),
+                "all": score_rankings(per["tune"] + per["test"])}
+
+    baseline = evaluate(lambda q: cand[q["id"]][0])
+    variants = []
+    for prefix in (False, True):
+        for w in SWEEP_WEIGHTS:
+            r = evaluate(lambda q, w=w, prefix=prefix: fuse(cand[q["id"]][0], cand[q["id"]][2 if prefix else 1], q["question"], w))
+            variants.append({"kw_weight": w, "prefix": prefix, **r})
+    return {"n_tune": len(tune_q), "n_test": len(test_q), "vector_baseline": baseline,
+            "variants": variants, "selected": pick_best(variants)}
+
+
+def sweep_markdown(sw: dict) -> str:
+    def row(label, v):
+        return (f"| {label} | {v['tune']['recall@5']:.2f} / {v['tune']['mrr']:.2f} | "
+                f"{v['test']['recall@5']:.2f} / {v['test']['mrr']:.2f} | {v['all']['recall@5']:.2f} / {v['all']['mrr']:.2f} |")
+
+    sel = sw["selected"]
+    lines = [f"### Retrieval sweep (tune n={sw['n_tune']}, held-out n={sw['n_test']}; cells = recall@5 / MRR)",
+             "| setting | tune | held-out | all |", "|---|---|---|---|", row("vector only (baseline)", sw["vector_baseline"])]
+    for v in sw["variants"]:
+        mark = " **<- selected on tune set**" if v is sel else ""
+        lines.append(row(f"hybrid kw_weight={v['kw_weight']} prefix={'on' if v['prefix'] else 'off'}{mark}", v))
+    return "\n".join(lines) + "\n"
+
+
 def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limit: int | None = None) -> dict:
     """sleep_s paces questions (free-tier LLM limits are per minute). A provider rate-limit error is
     retried once after the minute window; it is still reported in error_rate/retried if it persists."""
@@ -187,6 +257,8 @@ def to_markdown(results: dict) -> str:
         for mode, m in results["retrieval"].items():
             lines.append(f"| {mode} | {m['recall@1']:.2f} | {m['recall@3']:.2f} | {m['recall@5']:.2f} | {m['mrr']:.2f} |")
         lines.append("")
+    if "sweep" in results:
+        lines += [sweep_markdown(results["sweep"])]
     if "agent" in results:
         a = results["agent"]
         lines += [f"### End-to-end ({a.get('mode', 'agent')} mode)", "| metric | value |", "|---|---|",
@@ -205,17 +277,18 @@ def main() -> None:
     ap.add_argument("--redteam", action="store_true")
     ap.add_argument("--retrieval", action="store_true")
     ap.add_argument("--agent", action="store_true")
+    ap.add_argument("--sweep", action="store_true", help="retrieval settings sweep with a tune/held-out split (needs DB + Gemini, no LLM)")
     ap.add_argument("--golden", default=str(HERE / "golden_set.json"))
     ap.add_argument("--mode", choices=["fast", "agent"], default="agent", help="answer mode for --agent runs")
     ap.add_argument("--sleep", type=float, default=0.0, help="seconds between questions (free-tier LLM limits)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions (smoke test)")
     ap.add_argument("--repo-url", default=None, help="look up the indexed repo by URL instead of repo_id in the golden file")
     args = ap.parse_args()
-    if not (args.redteam or args.retrieval or args.agent):
-        ap.error("choose at least one of --redteam --retrieval --agent")
+    if not (args.redteam or args.retrieval or args.agent or args.sweep):
+        ap.error("choose at least one of --redteam --retrieval --agent --sweep")
 
     results: dict = {"timestamp": datetime.now(timezone.utc).isoformat()}
-    golden = json.loads(Path(args.golden).read_text()) if (args.retrieval or args.agent) else None
+    golden = json.loads(Path(args.golden).read_text()) if (args.retrieval or args.agent or args.sweep) else None
     if golden is not None:
         golden["repo_id"] = resolve_repo_id(golden, args.repo_url)
         if args.limit:
@@ -224,6 +297,8 @@ def main() -> None:
         results["redteam"] = run_redteam()
     if args.retrieval:
         results["retrieval"] = run_retrieval(golden)
+    if args.sweep:
+        results["sweep"] = run_retrieval_sweep(golden)
     if args.agent:
         results["agent"] = run_agent_eval(golden, args.mode, args.sleep)
 

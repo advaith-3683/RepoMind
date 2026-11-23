@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # --- retrieval ---
     retrieval_top_k: int = 5
     retrieval_pool: int = 30
+    rrf_keyword_weight: float = 1.0          # weight of the keyword list in hybrid fusion (vector list = 1.0)
+    keyword_prefix_match: bool = False       # stem query terms + prefix match ('hashed' -> 'hash:*')
 
     # --- cost tracking (USD per 1M tokens; set from current Gemini pricing) ---
     price_in_per_mtok: float = 0.0

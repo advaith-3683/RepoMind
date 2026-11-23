@@ -15,6 +15,11 @@ on:
       limit:
         description: "Only the first N questions (0 = all). Use 3 for a smoke test."
         default: "3"
+      task:
+        description: "full = red-team + retrieval + end-to-end; sweep = retrieval-settings sweep only (no LLM calls, fast)"
+        type: choice
+        options: [full, sweep]
+        default: full
 
 permissions:
   contents: read
@@ -53,10 +58,14 @@ jobs:
         run: |
           set -o pipefail
           LIMIT="${{ inputs.limit }}"
-          ARGS="--redteam --retrieval --agent --golden app/evals/golden_smartspend.json --mode ${{ inputs.mode }} --sleep ${{ inputs.sleep }}"
-          if [ "$LIMIT" != "0" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+          if [ "${{ inputs.task }}" = "sweep" ]; then
+            ARGS="--sweep --golden app/evals/golden_smartspend.json"
+          else
+            ARGS="--redteam --retrieval --agent --golden app/evals/golden_smartspend.json --mode ${{ inputs.mode }} --sleep ${{ inputs.sleep }}"
+            if [ "$LIMIT" != "0" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+          fi
           python -m app.evals.run $ARGS | tee eval-output.md
-          { echo "## RepoMind evals (${{ inputs.mode }} mode, limit ${{ inputs.limit }})"; cat eval-output.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## RepoMind evals (${{ inputs.task }}, ${{ inputs.mode }} mode, limit ${{ inputs.limit }})"; cat eval-output.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
