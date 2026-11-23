@@ -133,15 +133,18 @@ def fuse(vec_hits: list[Hit], keyword_hits: list[Hit], question: str, kw_weight:
 
 
 def hybrid_search(conn, repo_id, question: str, embedder, k: int = 5, pool: int = 30,
-                  mode: str = "hybrid", kw_weight: float | None = None, prefix: bool | None = None) -> list[Hit]:
-    """mode: 'vector' (baseline), 'keyword', or 'hybrid' (vector + keyword + weighted RRF + rerank).
-    kw_weight / prefix default to the settings (RRF_KEYWORD_WEIGHT, KEYWORD_PREFIX_MATCH)."""
-    if kw_weight is None or prefix is None:
+                  mode: str | None = None, kw_weight: float | None = None, prefix: bool | None = None) -> list[Hit]:
+    """mode: 'vector', 'keyword', or 'hybrid' (vector + keyword + weighted RRF + rerank).
+    mode / kw_weight / prefix default to the settings (RETRIEVAL_MODE, RRF_KEYWORD_WEIGHT, KEYWORD_PREFIX_MATCH)."""
+    if mode is None or kw_weight is None or prefix is None:
         from ..config import get_settings
 
         st = get_settings()
+        mode = st.retrieval_mode if mode is None else mode
         kw_weight = st.rrf_keyword_weight if kw_weight is None else kw_weight
         prefix = st.keyword_prefix_match if prefix is None else prefix
+    if mode not in ("vector", "keyword", "hybrid"):
+        raise ValueError(f"unknown retrieval mode: {mode!r}")
     vec_hits = keyword_hits = []
     if mode in ("vector", "hybrid"):
         vec_hits = vector_search(conn, repo_id, embedder.embed_query(question), pool)

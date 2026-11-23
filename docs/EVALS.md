@@ -31,3 +31,30 @@ python -m app.evals.run --retrieval --agent --golden app/evals/golden_smartspend
 ```
 Free-tier Groq allows ~8K tokens/minute, so `--sleep` matters; a rate-limit error is retried once after 65 s and reported in
 the error rate if it persists. `LLM_CACHE=off` gives honest numbers; the cache is for cheap reruns.
+
+## Results so far (smartspendAI, 27 answerable + 5 should-decline questions; Groq `openai/gpt-oss-120b`, fast mode)
+
+Baseline end-to-end run (retrieval = hybrid with equal-weight RRF, run 2026-11-23):
+
+| Metric | Value |
+|---|---|
+| answer rate | 85% (23/27) |
+| correctly declined | 5/5 |
+| error rate | 0% |
+| file recall (strict; unanswered = 0) | 0.70 |
+| keyword hit | 0.72 |
+| groundedness (overlap proxy, not a fact check) | 0.98 |
+| latency p50 / p95 | 9.6 s / 19.1 s |
+
+Retrieval ablation (tune = first 14 questions, held-out = last 13; settings were chosen on the tune half only):
+
+| Setting | Held-out recall@5 | Held-out MRR | All recall@5 / MRR |
+|---|---|---|---|
+| vector only | 0.92 | 0.83 | 0.96 / 0.87 |
+| hybrid, equal-weight RRF (original) | 0.73 | 0.63 | 0.83 / 0.70 |
+| hybrid, best on tune (keyword weight 0.1, prefix match) | 0.92 | 0.75 | 0.96 / 0.83 |
+
+Finding: on this repo, keyword fusion did not help and equal-weight fusion hurt, so the default is now vector-only
+(`RETRIEVAL_MODE=vector`; set `hybrid` to re-enable). Limits: one repository, natural-language questions written by the
+project owner, 27 answerable questions, so differences of a few points are noise. Keyword search may still help
+identifier-style queries (the agent's `find_symbol` tool covers those); this set does not test that.

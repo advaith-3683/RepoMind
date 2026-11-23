@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     # --- retrieval ---
     retrieval_top_k: int = 5
     retrieval_pool: int = 30
+    retrieval_mode: str = "vector"           # vector | hybrid | keyword. Eval (docs/EVALS.md): vector beat hybrid on held-out questions
     rrf_keyword_weight: float = 1.0          # weight of the keyword list in hybrid fusion (vector list = 1.0)
     keyword_prefix_match: bool = False       # stem query terms + prefix match ('hashed' -> 'hash:*')
 

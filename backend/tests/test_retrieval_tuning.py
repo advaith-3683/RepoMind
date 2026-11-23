@@ -44,6 +44,7 @@ def test_hybrid_search_uses_settings_defaults(monkeypatch):
     class Emb:
         def embed_query(self, q): return [0.0]
 
+    monkeypatch.setenv("RETRIEVAL_MODE", "hybrid")
     monkeypatch.setenv("KEYWORD_PREFIX_MATCH", "true")
     config.get_settings.cache_clear()
     try:
@@ -70,3 +71,26 @@ def test_sweep_markdown_marks_selection():
     sw = {"n_tune": 2, "n_test": 2, "vector_baseline": v, "variants": [v], "selected": v}
     md = ev.sweep_markdown(sw)
     assert "selected on tune set" in md and "vector only (baseline)" in md and "hybrid kw_weight=0.25 prefix=on" in md
+
+
+def test_default_retrieval_mode_is_vector_and_never_touches_keyword_search(monkeypatch):
+    import pytest
+    from app import config
+    monkeypatch.delenv("RETRIEVAL_MODE", raising=False)
+    config.get_settings.cache_clear()
+    monkeypatch.setattr("app.retrieval.hybrid.vector_search", lambda *a, **k: [hit(1), hit(2)])
+
+    def no_keyword(*a, **k):
+        raise AssertionError("keyword search must not run in vector mode")
+
+    monkeypatch.setattr("app.retrieval.hybrid.keyword_search", no_keyword)
+
+    class Emb:
+        def embed_query(self, q): return [0.0]
+
+    try:
+        assert [h.id for h in hybrid_search(None, "r", "q", Emb(), k=1)] == [1]
+        with pytest.raises(ValueError):
+            hybrid_search(None, "r", "q", Emb(), mode="bogus")
+    finally:
+        config.get_settings.cache_clear()
