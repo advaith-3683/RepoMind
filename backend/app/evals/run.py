@@ -76,7 +76,7 @@ def _ask_once(repo: dict, q: dict, mode: str) -> dict:
 
     t0 = time.monotonic()
     row = {"id": q["id"], "answer": "", "cited": [], "found": None, "groundedness": 0.0,
-           "status": None, "error": None, "usage": {}}
+           "status": None, "error": None, "error_detail": None, "usage": {}}
     try:
         for ev in stream_answer(repo, q["question"], mode):
             if ev["type"] == "answer":
@@ -84,10 +84,12 @@ def _ask_once(repo: dict, q: dict, mode: str) -> dict:
                            found=ev.get("found", True), groundedness=ev.get("groundedness", 0.0))
             elif ev["type"] == "error":
                 row["error"] = ev.get("code")
+                row["error_detail"] = (ev.get("detail") or "")[:160] or None
             elif ev["type"] == "done":
                 row.update(status=ev.get("status"), usage=ev.get("usage", {}))
     except Exception as e:  # noqa: BLE001  (one bad question must not kill the whole run)
         row["error"] = f"exception:{type(e).__name__}"
+        row["error_detail"] = str(e)[:160] or None
     row["latency_ms"] = row["usage"].get("latency_ms", int((time.monotonic() - t0) * 1000))
     return row
 
@@ -109,6 +111,9 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
         recalls.append(metrics.recall_at_k(r["cited"], q.get("expected_files", []), len(r["cited"]) or 1) if ok else 0.0)
         hits.append(metrics.keyword_hit_rate(r["answer"], q.get("expected_keywords", [])) if ok else 0.0)
     declined = [r for r in decl_rows if r["found"] is False or r["status"] == "needs_clarification"]
+    ok_ans = [r for r in ans_rows if not r["error"]]
+    ok_decl = [r for r in decl_rows if not r["error"]]
+    ok_declined = [r for r in ok_decl if r["found"] is False or r["status"] == "needs_clarification"]
     lat = [r["latency_ms"] for r in rows]
     cost = [r["usage"].get("cost_usd", 0.0) for r in rows]
     toks = [r["usage"].get("tokens_in", 0) + r["usage"].get("tokens_out", 0) for r in rows]
@@ -123,12 +128,16 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
         "groundedness": metrics.mean([r["groundedness"] for r in ans_rows if answered(r)]),
         "decline_accuracy": (len(declined) / len(decl_rows)) if decl_rows else None,
         "error_rate": metrics.mean([1.0 if r["error"] else 0.0 for r in rows]),
+        "n_errors": sum(1 for r in rows if r["error"]),
+        # Same metrics over questions that did NOT error (diagnostic only; the headline numbers above stay strict).
+        "answer_rate_ex_errors": metrics.mean([1.0 if answered(r) else 0.0 for r in ok_ans]) if ok_ans else None,
+        "decline_accuracy_ex_errors": (len(ok_declined) / len(ok_decl)) if ok_decl else None,
         "latency_p50_ms": metrics.percentile(lat, 50),
         "latency_p95_ms": metrics.percentile(lat, 95),
         "avg_cost_usd": metrics.mean(cost),
         "avg_tokens": metrics.mean(toks),
         "rows": [{"id": r["id"], "status": r["status"], "found": r["found"], "error": r["error"],
-                  "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
+                  "error_detail": r.get("error_detail"), "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
                  for r in rows],
     }
 
@@ -203,9 +212,13 @@ def sweep_markdown(sw: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+MAX_RATE_LIMIT_RETRIES = 2
+
+
 def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limit: int | None = None) -> dict:
     """sleep_s paces questions (free-tier LLM limits are per minute). A provider rate-limit error is
-    retried once after the minute window; it is still reported in error_rate/retried if it persists."""
+    retried (up to MAX_RATE_LIMIT_RETRIES times) after the minute window; it is still reported in
+    error_rate/retried if it persists."""
     from .. import store
 
     repo = store.get_repo(golden["repo_id"])
@@ -215,9 +228,14 @@ def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limi
         if i and sleep_s:
             time.sleep(sleep_s)
         row = _ask_once(repo, q, mode)
-        if row["error"] == "rate_limited":
+        retried = False
+        for _ in range(MAX_RATE_LIMIT_RETRIES):
+            if row["error"] != "rate_limited":
+                break
             time.sleep(max(sleep_s, 65))
             row = _ask_once(repo, q, mode)
+            retried = True
+        if retried:
             row["retried"] = True
         rows.append(row)
     return summarize_agent_rows(rows, questions, mode)
@@ -266,9 +284,16 @@ def to_markdown(results: dict) -> str:
                   f"| answer rate | {a['answer_rate']:.0%} |", f"| file recall | {a['file_recall']:.2f} |",
                   f"| keyword hit | {a['keyword_hit']:.2f} |", f"| groundedness | {a['groundedness']:.2f} |",
                   "| correctly declined | " + ("n/a" if a["decline_accuracy"] is None else f"{a['decline_accuracy']:.0%}") + " |",
-                  f"| error rate | {a['error_rate']:.0%} |",
+                  f"| error rate | {a['error_rate']:.0%} ({a.get('n_errors', 0)} errored) |",
                   f"| latency p50 / p95 | {a['latency_p50_ms']:.0f} / {a['latency_p95_ms']:.0f} ms |",
                   f"| avg cost / query | ${a['avg_cost_usd']:.4f} |", ""]
+        if a.get("n_errors"):
+            ex, dx = a.get("answer_rate_ex_errors"), a.get("decline_accuracy_ex_errors")
+            lines += [f"> **Warning: {a['n_errors']} of {a['n']} questions errored (e.g. provider rate limits).** "
+                      "The headline numbers count those as failures, so they measure the provider limit, not answer quality. "
+                      "Do not compare this run with another. Excluding errored questions: answer rate "
+                      + ("n/a" if ex is None else f"{ex:.0%}") + ", declined "
+                      + ("n/a" if dx is None else f"{dx:.0%}") + ". Re-run after the quota resets.", ""]
     return "\n".join(lines)
 
 

@@ -95,3 +95,12 @@ def test_injection_in_retrieved_chunk_is_neutralized_once(repo):
     assert len(inj) == 1                                   # emitted once, not duplicated by run_agent
     assert "system prompt" not in llm.messages[0][0].lower() and "neutralized" in llm.messages[0][0]
     assert types(events)[-1] == "answer"
+
+
+def test_step_label_reflects_configured_retrieval_mode(repo, monkeypatch):
+    from app.config import get_settings
+
+    for mode in ("vector", "hybrid"):
+        monkeypatch.setattr(get_settings(), "retrieval_mode", mode)
+        events, _ = run(repo, [final("`login` calls `make_token` [app/auth.py:3-5].")])
+        assert events[0]["thought"] == f"Fast mode: single {mode} retrieval."

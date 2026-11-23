@@ -104,3 +104,43 @@ def test_golden_file_is_well_formed():
             assert q["expected_files"] and q["expected_keywords"]
     assert sum(1 for q in qs if q.get("should_decline")) >= 3
     assert [q["id"] for q in ev._answerable(g)] == [q["id"] for q in qs if not q.get("should_decline")]
+
+
+def test_error_detail_is_recorded_and_truncated(monkeypatch):
+    def fake_stream(repo, question, mode):
+        yield {"type": "error", "code": "rate_limited", "message": "m", "detail": "x" * 500}
+        yield {"type": "done", "status": "error", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", fake_stream)
+    r = ev._ask_once({"id": "r"}, QS[0], "fast")
+    assert r["error"] == "rate_limited" and len(r["error_detail"]) == 160
+
+
+def test_rate_limit_retries_up_to_twice_then_gives_up(monkeypatch):
+    sleeps, calls = [], {"n": 0}
+    monkeypatch.setattr(ev.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(store, "get_repo", lambda rid: {"id": rid})
+
+    def always_limited(repo, question, mode):
+        calls["n"] += 1
+        yield {"type": "error", "code": "rate_limited", "message": "m"}
+        yield {"type": "done", "status": "error", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", always_limited)
+    out = ev.run_agent_eval({"repo_id": "r", "questions": QS[:1]}, "fast")
+    assert calls["n"] == 3 and sleeps.count(65) == 2
+    assert out["rows"][0]["error"] == "rate_limited" and out["rows"][0]["retried"] is True
+
+
+def test_ex_errors_metrics_and_warning():
+    rows = [row("a", "alpha", ["f1.py"]),
+            row("b", "", status="error", error="rate_limited", found=None),
+            row("d1", "", status="error", error="rate_limited", found=None),
+            row("d2", "none", found=False)]
+    s = ev.summarize_agent_rows(rows, QS, "fast")
+    assert s["n_errors"] == 2
+    assert s["answer_rate"] == pytest.approx(1 / 2) and s["answer_rate_ex_errors"] == 1.0
+    assert s["decline_accuracy"] == 0.5 and s["decline_accuracy_ex_errors"] == 1.0
+    assert "Warning: 2 of 4" in ev.to_markdown({"agent": s})
+    clean = ev.summarize_agent_rows([row("a", "alpha", ["f1.py"])], QS[:1])
+    assert "Warning" not in ev.to_markdown({"agent": clean})
