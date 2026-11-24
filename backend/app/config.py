@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     cache_dir: str = "./data/cache"
     default_ask_mode: str = "fast"                    # fast = retrieve once + 1 LLM call; agent = full loop
     fast_top_k: int = 5
+    search_preview_lines: int = 30                    # lines of each retrieved chunk shown to the model (chunks can be up to 120 lines)
     fast_max_steps: int = 3
 
     # --- auth: Supabase Auth ("Sign in with GitHub") ---

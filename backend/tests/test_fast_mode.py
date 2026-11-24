@@ -104,3 +104,14 @@ def test_step_label_reflects_configured_retrieval_mode(repo, monkeypatch):
         monkeypatch.setattr(get_settings(), "retrieval_mode", mode)
         events, _ = run(repo, [final("`login` calls `make_token` [app/auth.py:3-5].")])
         assert events[0]["thought"] == f"Fast mode: single {mode} retrieval."
+
+
+def test_search_preview_lines_is_configurable(repo, monkeypatch):
+    from app.config import get_settings
+
+    long_hit = make_hit(content="\n".join(f"line{i}" for i in range(100)))
+    for n in (5, 60):
+        monkeypatch.setattr(get_settings(), "search_preview_lines", n)
+        tools = RepoTools(repo, search_fn=lambda q, k: [long_hit], symbol_fn=lambda n_: [], evidence=EvidenceStore())
+        out = tools.search_code("x", 1)
+        assert f"line{n - 1}" in out and f"line{n}" not in out

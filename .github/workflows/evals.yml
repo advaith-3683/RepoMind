@@ -15,6 +15,12 @@ on:
       limit:
         description: "Only the first N questions (0 = all). Use 3 for a smoke test."
         default: "3"
+      only:
+        description: "Diagnostics: comma-separated question ids (e.g. q05,q10). Empty = normal run. A subset is NOT a valid headline result."
+        default: ""
+      preview_lines:
+        description: "Lines of each retrieved chunk shown to the model (default 30)"
+        default: "30"
       use_fallback:
         description: "Allow the OpenRouter fallback model. Leave OFF for valid evals: it would mix two models in one result."
         type: boolean
@@ -41,6 +47,7 @@ jobs:
         working-directory: backend
     env:
       AUTH_REQUIRED: "false"
+      SEARCH_PREVIEW_LINES: ${{ inputs.preview_lines }}
       LLM_CACHE: "off"                 # measure real calls, not cached answers
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -67,9 +74,10 @@ jobs:
           else
             ARGS="--redteam --retrieval --agent --golden app/evals/golden_smartspend.json --mode ${{ inputs.mode }} --sleep ${{ inputs.sleep }}"
             if [ "$LIMIT" != "0" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+            if [ -n "${{ inputs.only }}" ]; then ARGS="$ARGS --only ${{ inputs.only }}"; fi
           fi
           python -m app.evals.run $ARGS | tee eval-output.md
-          { echo "## RepoMind evals (${{ inputs.task }}, ${{ inputs.mode }} mode, limit ${{ inputs.limit }})"; cat eval-output.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## RepoMind evals (${{ inputs.task }}, ${{ inputs.mode }} mode, limit ${{ inputs.limit }}, only "${{ inputs.only }}", preview ${{ inputs.preview_lines }} lines)"; cat eval-output.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

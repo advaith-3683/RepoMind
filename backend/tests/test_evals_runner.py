@@ -221,3 +221,10 @@ def test_vector_diagnostics_and_markdown():
     sw = {"n_tune": 1, "n_test": 1, "vector_baseline": z, "variants": [], "selected": None, "vector_by_question": d, "k": 2}
     md = ev.sweep_markdown(sw)
     assert "0/2 questions have every expected file" in md and "- a: missing y.py" in md
+
+
+def test_select_questions_only():
+    assert [q["id"] for q in ev.select_questions(QS, "b, d1")] == ["b", "d1"]
+    assert ev.select_questions(QS, None) is QS
+    with pytest.raises(SystemExit):
+        ev.select_questions(QS, "b,nope")

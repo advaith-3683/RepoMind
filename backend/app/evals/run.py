@@ -274,6 +274,17 @@ def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limi
     return summary
 
 
+def select_questions(questions: list[dict], only: str | None) -> list[dict]:
+    """--only q05,q10: run just those ids (diagnostics). Unknown ids are an error, never silently ignored."""
+    if not only:
+        return questions
+    want = [x.strip() for x in only.split(",") if x.strip()]
+    known = {q["id"] for q in questions}
+    if unknown := [w for w in want if w not in known]:
+        raise SystemExit(f"--only: unknown question ids {unknown}")
+    return [q for q in questions if q["id"] in set(want)]
+
+
 def resolve_repo_id(golden: dict, repo_url: str | None = None) -> str:
     """repo_id from the golden file, or look it up by URL (--repo-url / golden['repo_url']). The repo must be
     indexed and ready: evals never trigger indexing."""
@@ -349,6 +360,7 @@ def main() -> None:
     ap.add_argument("--mode", choices=["fast", "agent"], default="agent", help="answer mode for --agent runs")
     ap.add_argument("--sleep", type=float, default=0.0, help="seconds between questions (free-tier LLM limits)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions (smoke test)")
+    ap.add_argument("--only", default=None, help="comma-separated question ids to run (diagnostics; not a valid headline run)")
     ap.add_argument("--repo-url", default=None, help="look up the indexed repo by URL instead of repo_id in the golden file")
     args = ap.parse_args()
     if not (args.redteam or args.retrieval or args.agent or args.sweep):
@@ -358,6 +370,7 @@ def main() -> None:
     golden = json.loads(Path(args.golden).read_text()) if (args.retrieval or args.agent or args.sweep) else None
     if golden is not None:
         golden["repo_id"] = resolve_repo_id(golden, args.repo_url)
+        golden["questions"] = select_questions(golden["questions"], args.only)
         if args.limit:
             golden["questions"] = golden["questions"][: args.limit]
     if args.redteam:
