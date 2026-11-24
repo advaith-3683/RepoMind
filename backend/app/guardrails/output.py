@@ -8,6 +8,21 @@ CITATION_RE = re.compile(r"\[([\w./\-@+()][\w./\-@+() ]*):(\d+)(?:-(\d+))?\]")  
 _BACKTICK_RE = re.compile(r"`([A-Za-z_][\w.]{2,})`")
 
 
+_BRACKET_MAP = str.maketrans({"【": "[", "】": "]", "［": "[", "］": "]", "〔": "[", "〕": "]"})
+_UNICODE_DASHES = "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"   # hyphen, non-breaking hyphen, figure/en/em dash, minus
+_BRACKETED_RE = re.compile(r"\[[^\]\n]*\]")
+_DIGIT_DASH_RE = re.compile(rf"(?<=\d)[{_UNICODE_DASHES}](?=\d)")
+
+
+def normalize_citation_text(answer: str) -> str:
+    """Models sometimes write citations with look-alike characters (fullwidth 【brackets】, non-breaking hyphens
+    in ranges). Map those to the plain form BEFORE verification so a correctly cited answer is not rejected for
+    typography. This does not weaken the check: the normalized citation must still match retrieved evidence."""
+    answer = answer.translate(_BRACKET_MAP)
+    answer = _BRACKETED_RE.sub(lambda m: re.sub(f"[{_UNICODE_DASHES}]", "-", m.group(0)), answer)
+    return _DIGIT_DASH_RE.sub("-", answer)
+
+
 @dataclass(frozen=True)
 class Evidence:
     path: str

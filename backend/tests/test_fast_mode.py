@@ -115,3 +115,9 @@ def test_search_preview_lines_is_configurable(repo, monkeypatch):
         tools = RepoTools(repo, search_fn=lambda q, k: [long_hit], symbol_fn=lambda n_: [], evidence=EvidenceStore())
         out = tools.search_code("x", 1)
         assert f"line{n - 1}" in out and f"line{n}" not in out
+
+
+def test_lookalike_citation_characters_are_accepted(repo):
+    events, llm = run(repo, [final("`login` calls `make_token` 【app/auth.py:3‑5】.")])
+    assert types(events) == ["step", "answer"] and llm.calls == 1
+    assert events[1]["citations"] and events[1]["text"].count("[app/auth.py:3-5]") == 1

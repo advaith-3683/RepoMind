@@ -145,3 +145,22 @@ def test_slash_rewrite_of_spaced_path_is_still_invalid():
 
     v = verify_citations("[smartspend/backend/auth.py:121-148]", [Evidence("smartspend backend/auth.py", 121, 148)])
     assert v.invalid and not v.valid
+
+
+def test_normalize_citation_text_fixes_lookalike_characters():
+    from app.guardrails.output import extract_citations, normalize_citation_text
+
+    raw = "It checks the token 【app/auth.py:12‑30】 and also [app/db.py:5–9] (lines 455‑462)."
+    out = normalize_citation_text(raw)
+    assert "[app/auth.py:12-30]" in out and "[app/db.py:5-9]" in out and "455-462" in out
+    assert [c.path for c in extract_citations(out)] == ["app/auth.py", "app/db.py"]
+    # prose dashes and ordinary text are left alone
+    assert normalize_citation_text("fast — and simple") == "fast — and simple"
+
+
+def test_normalized_citation_is_still_verified_against_evidence():
+    from app.guardrails.output import Evidence, normalize_citation_text, verify_citations
+
+    ans = normalize_citation_text("Hashes it 【app/auth.py:12‑30】; also 【app/other.py:1‑2】.")
+    v = verify_citations(ans, [Evidence("app/auth.py", 10, 40)])
+    assert [c.path for c in v.valid] == ["app/auth.py"] and [c.path for c in v.invalid] == ["app/other.py"]

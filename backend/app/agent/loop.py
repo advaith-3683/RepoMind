@@ -11,7 +11,7 @@ from typing import Iterator
 
 from ..guardrails.budget import Budget, BudgetExceeded
 from ..guardrails.errors import GuardrailViolation
-from ..guardrails.output import groundedness_score, strip_invalid_citations, verify_citations
+from ..guardrails.output import groundedness_score, normalize_citation_text, strip_invalid_citations, verify_citations
 from ..hitl.actions import validate_payload
 from ..hitl.patching import PatchError, apply_edits, make_diff
 from .llm import LLM
@@ -119,7 +119,7 @@ def run_agent(
 
             # ---------- final answer ----------
             if action.name == "final_answer":
-                answer = str(action.args.get("answer", "")).strip()
+                answer = normalize_citation_text(str(action.args.get("answer", "")).strip())
                 found = bool(action.args.get("found", True))
                 if not answer:
                     messages.append({"role": "user", "content": "final_answer needs a non-empty 'answer'."})
