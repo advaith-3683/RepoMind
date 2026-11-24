@@ -71,17 +71,26 @@ def _answerable(golden: dict) -> list[dict]:
     return [q for q in golden["questions"] if not q.get("should_decline")]
 
 
+def clarify_reason(message: str) -> str:
+    """Why the system asked the user to clarify: 'ungrounded' = the answer could not be tied to retrieved code
+    (citation check failed), 'budget' = ran out of step/token/time budget. Diagnostic only."""
+    m = message.lower()
+    return "ungrounded" if "couldn't ground" in m else "budget" if "ran out of budget" in m else "other"
+
+
 def _ask_once(repo: dict, q: dict, mode: str) -> dict:
     from ..service import stream_answer
 
     t0 = time.monotonic()
     row = {"id": q["id"], "answer": "", "cited": [], "found": None, "groundedness": 0.0,
-           "status": None, "error": None, "error_detail": None, "models": [], "usage": {}}
+           "status": None, "error": None, "error_detail": None, "clarify": None, "models": [], "usage": {}}
     try:
         for ev in stream_answer(repo, q["question"], mode):
             if ev["type"] == "answer":
                 row.update(answer=ev["text"], cited=[c["path"] for c in ev.get("citations", [])],
                            found=ev.get("found", True), groundedness=ev.get("groundedness", 0.0))
+            elif ev["type"] == "needs_clarification":
+                row["clarify"] = clarify_reason(ev.get("message", ""))
             elif ev["type"] == "error":
                 row["error"] = ev.get("code")
                 row["error_detail"] = (ev.get("detail") or "")[:160] or None
@@ -138,7 +147,7 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
         "avg_cost_usd": metrics.mean(cost),
         "avg_tokens": metrics.mean(toks),
         "rows": [{"id": r["id"], "status": r["status"], "found": r["found"], "error": r["error"],
-                  "error_detail": r.get("error_detail"), "models": r.get("models", []), "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
+                  "error_detail": r.get("error_detail"), "clarify": r.get("clarify"), "models": r.get("models", []), "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
                  for r in rows],
     }
 
@@ -162,6 +171,16 @@ def pick_best(variants: list[dict]) -> dict:
 
 
 SWEEP_WEIGHTS = (0.0, 0.1, 0.25, 0.5, 1.0)
+
+
+def vector_diagnostics(questions: list[dict], vec_hits: dict[str, list[str]], k: int) -> dict:
+    """Per answerable question: which expected files are missing from the vector top-k. Lets a failed end-to-end
+    question be classified as 'retrieval missed it' vs 'the model/citation step failed'. Pure; unit-tested."""
+    out = {}
+    for q in questions:
+        top = vec_hits[q["id"]][:k]
+        out[q["id"]] = {"missing": [f for f in q["expected_files"] if f not in top], "top": top}
+    return out
 
 
 def run_retrieval_sweep(golden: dict) -> dict:
@@ -195,8 +214,9 @@ def run_retrieval_sweep(golden: dict) -> dict:
         for w in SWEEP_WEIGHTS:
             r = evaluate(lambda q, w=w, prefix=prefix: fuse(cand[q["id"]][0], cand[q["id"]][2 if prefix else 1], q["question"], w))
             variants.append({"kw_weight": w, "prefix": prefix, **r})
+    diag = vector_diagnostics(qs, {qid: [h.path for h in c[0]] for qid, c in cand.items()}, s.fast_top_k)
     return {"n_tune": len(tune_q), "n_test": len(test_q), "vector_baseline": baseline,
-            "variants": variants, "selected": pick_best(variants)}
+            "variants": variants, "selected": pick_best(variants), "vector_by_question": diag, "k": s.fast_top_k}
 
 
 def sweep_markdown(sw: dict) -> str:
@@ -210,6 +230,11 @@ def sweep_markdown(sw: dict) -> str:
     for v in sw["variants"]:
         mark = " **<- selected on tune set**" if v is sel else ""
         lines.append(row(f"hybrid kw_weight={v['kw_weight']} prefix={'on' if v['prefix'] else 'off'}{mark}", v))
+    diag = sw.get("vector_by_question")
+    if diag is not None:
+        bad = {qid: d["missing"] for qid, d in diag.items() if d["missing"]}
+        lines += ["", f"Vector top-{sw.get('k', 5)}: {len(diag) - len(bad)}/{len(diag)} questions have every expected file retrieved."]
+        lines += [f"- {qid}: missing {', '.join(m)}" for qid, m in bad.items()]
     return "\n".join(lines) + "\n"
 
 

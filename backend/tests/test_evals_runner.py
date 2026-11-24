@@ -191,3 +191,33 @@ def test_early_stop_streak_resets_on_success(monkeypatch):
     qs = [{**QS[0], "id": f"x{i}", "question": ("L" if i in (0, 1, 3, 4) else "ok")} for i in range(6)]   # L,L,ok,L,L,ok: streak never reaches 3
     out = ev.run_agent_eval({"repo_id": "r", "questions": qs}, "fast")
     assert out["n"] == 6 and out["aborted"] is False
+
+
+def test_clarify_reason_is_recorded():
+    assert ev.clarify_reason("I couldn't ground an answer in the code I retrieved. Can you...") == "ungrounded"
+    assert ev.clarify_reason("I ran out of budget before I could find...") == "budget"
+    assert ev.clarify_reason("something else") == "other"
+
+    def fake_stream(repo, question, mode):
+        yield {"type": "needs_clarification", "message": "I couldn't ground an answer in the code I retrieved."}
+        yield {"type": "done", "status": "needs_clarification", "usage": {}}
+
+    import app.service as svc
+    orig = svc.stream_answer
+    svc.stream_answer = fake_stream
+    try:
+        r = ev._ask_once({}, QS[0], "fast")
+    finally:
+        svc.stream_answer = orig
+    assert r["clarify"] == "ungrounded" and r["status"] == "needs_clarification"
+    assert ev.summarize_agent_rows([r], QS[:1])["rows"][0]["clarify"] == "ungrounded"
+
+
+def test_vector_diagnostics_and_markdown():
+    qs = [{"id": "a", "expected_files": ["x.py", "y.py"]}, {"id": "b", "expected_files": ["z.py"]}]
+    d = ev.vector_diagnostics(qs, {"a": ["x.py", "q.py", "y.py"], "b": ["m.py", "n.py"]}, 2)
+    assert d["a"]["missing"] == ["y.py"] and d["b"]["missing"] == ["z.py"]     # y.py is outside the top 2
+    z = {"tune": {"recall@5": 1, "mrr": 1}, "test": {"recall@5": 1, "mrr": 1}, "all": {"recall@5": 1, "mrr": 1}}
+    sw = {"n_tune": 1, "n_test": 1, "vector_baseline": z, "variants": [], "selected": None, "vector_by_question": d, "k": 2}
+    md = ev.sweep_markdown(sw)
+    assert "0/2 questions have every expected file" in md and "- a: missing y.py" in md
