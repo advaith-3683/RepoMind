@@ -5,6 +5,7 @@ import { createAuth } from "./auth.js";
 import { initChat } from "./ui/chat.js";
 import { renderWorkspaceState } from "./ui/workspace.js";
 import { createRouter } from "./router.js";
+import { initEvaluations } from "./ui/evaluations.js";
 
 const question = document.querySelector("#question");
 const mobileQuestion = document.querySelector("#mobile-question");
@@ -13,7 +14,8 @@ const mobileNotice = document.querySelector(".mobile-composer-notice");
 const mobileViewport = window.matchMedia("(max-width: 900px)");
 function updateMobileLayout() {
   const shellHidden = document.querySelector("#app-shell").hidden;
-  document.querySelector(".skip-link").href = shellHidden ? "#auth-title" : mobileViewport.matches ? "#mobile-workspace" : "#workspace";
+  const publicPage = !document.querySelector("#public-pages").hidden;
+  document.querySelector(".skip-link").href = publicPage ? "#public-content" : shellHidden ? "#auth-title" : mobileViewport.matches ? "#mobile-workspace" : "#workspace";
 }
 mobileViewport.addEventListener("change", updateMobileLayout);
 updateMobileLayout();
@@ -25,9 +27,18 @@ const repositories = initRepositories({ autoLoad: false, onChange(state) {
 } });
 const auth = createAuth();
 let workspaceActive = false;
+const evaluations = initEvaluations(document.querySelector("[data-evaluations]"));
 const router = createRouter({ onView(view) {
   document.querySelector("#app-shell").hidden = view !== "workspace";
   document.querySelector("#auth-screen").hidden = view !== "landing";
+  document.querySelector("#public-pages").hidden = !["evaluations", "documentation"].includes(view);
+  document.querySelector("#evaluations-page").hidden = view !== "evaluations";
+  document.querySelector("#documentation-page").hidden = view !== "documentation";
+  document.querySelectorAll("nav a[data-route]").forEach((link) => {
+    if (link.getAttribute("href") === `/${view}`) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  if (view === "evaluations") evaluations.load();
   updateMobileLayout();
 } });
 auth.subscribe(({ phase, message, login }) => {

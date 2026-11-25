@@ -16,6 +16,7 @@
     <div class="auth-masthead">
       <a class="auth-brand" href="/" data-route aria-label="RepoMind home">R <span>/</span> M</a>
       <p class="auth-edition">Codebase intelligence. Human agency.</p>
+      <nav class="public-nav" aria-label="Learn about RepoMind"><a href="/evaluations" data-route>Evaluations</a><a href="/documentation" data-route>Documentation</a></nav>
     </div>
     <div class="auth-content">
     <div class="auth-hero">
@@ -68,8 +69,8 @@
     <a class="logo" href="/" data-route aria-label="RepoMind home">R<span>/</span>M</a>
     <nav aria-label="Main navigation">
       <a href="/workspace" data-route aria-current="page">Workspace</a>
-      <span aria-disabled="true" title="Not available in this static preview">Evaluations</span>
-      <span aria-disabled="true" title="Not available in this static preview">Documentation</span>
+      <a href="/evaluations" data-route>Evaluations</a>
+      <a href="/documentation" data-route>Documentation</a>
     </nav>
     <div class="header-account">
       <div class="account-controls" data-account><span data-user-login></span><button type="button" data-sign-out>Sign out</button></div>
@@ -175,12 +176,35 @@
         <span class="sr-only mobile-composer-notice" role="status"></span>
       </form>
     </main>
+    <nav class="public-nav mobile-page-links" aria-label="Learn about RepoMind"><a href="/evaluations" data-route>Evaluations</a><a href="/documentation" data-route>Documentation</a></nav>
     <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
       <a href="/workspace" data-route aria-current="page">⌂ &nbsp;Workspace</a>
       <button type="button" data-open-repos>▤ &nbsp;Repos</button>
       <button type="button" disabled title="Activity screen is not enabled in this static preview">≡ &nbsp;Activity</button>
     </nav>
   </section>
+  </div>
+  <div id="public-pages" hidden>
+    <header class="public-header">
+      <a class="auth-brand" href="/" data-route aria-label="RepoMind home">R <span>/</span> M</a>
+      <nav class="public-nav" aria-label="Main navigation"><a href="/workspace" data-route>Workspace</a><a href="/evaluations" data-route>Evaluations</a><a href="/documentation" data-route>Documentation</a></nav>
+    </header>
+    <main class="public-content" id="public-content" tabindex="-1">
+      <section id="evaluations-page" aria-labelledby="evaluations-title" hidden>
+        <p class="eyebrow">Measured results</p><h1 id="evaluations-title">Evaluations</h1>
+        <div data-evaluations aria-live="polite"></div>
+      </section>
+      <article id="documentation-page" class="documentation" aria-labelledby="documentation-title" hidden>
+        <p class="eyebrow">Using RepoMind</p><h1 id="documentation-title">Documentation</h1>
+        <section><h2>What RepoMind is</h2><p>RepoMind answers questions about an indexed public GitHub repository using retrieved source code. Answers include citations you can inspect, alongside a trace of the run. Sign in to ask questions and review proposed changes.</p></section>
+        <section><h2>Fast vs Agent mode</h2><p>Fast retrieves source once and makes one answer-model call. It is the default for codebase questions and cannot propose changes. Agent can search and read code over several steps, uses more model calls, and can propose a patch or issue. If Fast asks for clarification, Try Agent mode reuses your submitted question.</p></section>
+        <section><h2>How citations are verified</h2><p>The server checks that each cited file and line range overlaps source evidence retrieved during the run. Invalid citations are retried or removed; insufficient evidence can lead to clarification or a declined answer. Click a citation to inspect the indexed source lines. A verified citation identifies supporting evidence; it does not prove that every statement in an answer is correct.</p></section>
+        <section><h2>Guardrails</h2><p>Input checks, injection detection, a read-only tool allowlist, sandboxed file paths, secret redaction, and step, token, and time budgets limit what a run can do. Output checks verify citations and estimate groundedness. These checks have limits: unfamiliar attacks may evade detection, and benign questions may be flagged.</p></section>
+        <section><h2>Approving and publishing changes</h2><p>Agent proposals are suggestions. Review the server-computed diff, then approve, edit, or reject. Approval records your decision; publishing is a separate explicit action. Open pull request creates a branch and pull request when you have write access. Create issue opens an issue. Changes are never committed directly to the default branch. Copy or download the patch if publishing is unavailable.</p></section>
+        <section><h2>How to read the Evaluations page</h2><p>End-to-end answer rate measures answerable questions answered; correctly declined measures out-of-scope questions declined. File recall and keyword hit measure expected evidence coverage. Groundedness is a keyword-overlap proxy. Error rate, latency, and average tokens describe reliability and usage.</p><p>Retrieval recall@1/3/5 measures expected file coverage among the top results; MRR measures the rank of the first relevant result. The ablation compares retrieval configurations on tune and held-out questions. Red-team counts show blocked attacks and benign prompts incorrectly flagged. Run history preserves invalid runs with their notes; the last row marks the current default. Read the Limits and Diagnostics before comparing runs.</p><a class="repo-retry" href="/evaluations" data-route>Read the evaluation results</a></section>
+        <section><h2>Known limits</h2><ul><li>The published evaluation covers a single repository.</li><li>The golden set is small, with one run per configuration; differences of a few questions can be noise.</li><li>Groundedness is a keyword-overlap proxy, not a fact check or a measure of full answer faithfulness.</li><li>Results apply to the model and retrieval settings shown on the Evaluations page.</li></ul></section>
+      </article>
+    </main>
   </div>
   <dialog class="citation-dialog" data-citation-dialog aria-labelledby="citation-title">
     <p class="eyebrow">Source evidence</p>

@@ -5,19 +5,21 @@ export function createRouter({ onView = () => {}, browser = window, page = docum
   // that URL's view, not be treated as a first visit and bounced forward to /workspace.
   const traversal = browser.performance?.getEntriesByType?.("navigation")?.[0]?.type === "back_forward";
   const ready = () => phase === "signed-in" || phase === "local";
+  const publicViews = { "/evaluations": "evaluations", "/documentation": "documentation" };
 
   function render() {
     // History traversal respects the path; only protected signed-out visits redirect.
     if (phase !== "loading" && !ready() && browser.location.pathname === "/workspace") {
       browser.history.replaceState(null, "", "/");
     }
-    const view = ready() && browser.location.pathname === "/workspace" ? "workspace" : "landing";
-    page.title = view === "workspace" ? "RepoMind — Workspace" : "RepoMind — Understand your code";
+    const view = publicViews[browser.location.pathname] || (ready() && browser.location.pathname === "/workspace" ? "workspace" : "landing");
+    const titles = { workspace: "Workspace", landing: "Understand your code", evaluations: "Evaluations", documentation: "Documentation" };
+    page.title = `RepoMind — ${titles[view]}`;
     onView(view);
   }
 
   function navigate(path) {
-    if (phase === "loading") return;
+    if (phase === "loading" && !Object.hasOwn(publicViews, path)) return;
     if (path !== browser.location.pathname) browser.history.pushState(null, "", path);
     render();
   }
@@ -28,7 +30,7 @@ export function createRouter({ onView = () => {}, browser = window, page = docum
     const link = event.target.closest?.("a[data-route]");
     if (!link || link.hasAttribute("download") || (link.target && link.target !== "_self")) return;
     const url = new URL(link.href, browser.location.origin);
-    if (url.origin !== browser.location.origin || !["/", "/workspace"].includes(url.pathname) || url.hash || url.search) return;
+    if (url.origin !== browser.location.origin || !["/", "/workspace", "/evaluations", "/documentation"].includes(url.pathname) || url.hash || url.search) return;
     event.preventDefault();
     navigate(url.pathname);
   });

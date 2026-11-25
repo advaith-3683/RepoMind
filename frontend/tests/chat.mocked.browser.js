@@ -10,10 +10,11 @@
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   const frame = (type, data) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
   const usage = { steps: 1, tokens_in: 25, tokens_out: 11, latency_ms: 120, cost_usd: 0, llm_cache_hits: 1 };
-  const answerText = "Fixture answer <img src=x onerror=alert(1)> [invented.py:7]";
+  const answerText = "Fixture answer <img src=x onerror=alert(1)> [invented.py:7] uses `run()`.";
   const errorMessage = "Fixture provider unavailable <b>literal</b>.";
   const errorDetail = "Provider debug detail\n<img src=x onerror=alert(1)>";
   tab.on("pageerror", (error) => errors.push(error.message));
+  await tab.route(origin + "/workspace", async (route) => route.fulfill({ response: await route.fetch({ url: origin + "/" }) }));
   await tab.route(origin + "/config", (route) => route.fulfill({ json: { auth_required: false } }));
   await tab.route(origin + "/repos", (route) => route.request().method() === "DELETE"
     ? route.fulfill({ status: 204 }) : route.fulfill({ json: [repo("one"), repo("two")] }));
@@ -68,7 +69,8 @@
       await tab.setViewportSize({ width, height: 900 });
       variant = "answer"; await reset();
       await send(); const output = await settled("Answer complete");
-      assert(await output.locator(".answer-text").textContent() === answerText, "Answer text changed");
+      assert(await output.locator(".answer-text").textContent() === answerText.replaceAll("`", ""), "Answer text changed");
+      assert(await output.locator(".answer-text code").textContent() === "run()", "Inline code was not rendered");
       assert(await output.locator(".citation-chip").count() === 1, "Invented citation chips");
       assert(await output.locator("img").count() === 0, "Model text became HTML");
       assert(await output.getByText("Low confidence: verify against the cited code.").isVisible(), "Low confidence banner missing");
@@ -116,6 +118,10 @@
       ["validation", "Fixture guardrail rejected this query."]]) {
       variant = value; await reset(); await send(); const output = await settled(expected);
       if (["no-citations", "not-found"].includes(value)) assert(await output.locator(".citation-chip").count() === 0, "Parsed inline citation text");
+      if (value === "not-found") {
+        assert(await output.getByText("No supporting code found in this repo", { exact: true }).isVisible(), "Missing absence-of-evidence notice");
+        assert(await output.getByText("Low confidence: verify against the cited code.", { exact: true }).count() === 0, "Declined answer retained confidence warning");
+      }
       if (value === "approval") {
         assert(await output.getByRole("button", { name: "Approve", exact: true }).isVisible(), "Approval control missing");
         assert(await output.getByText("Fixture change").isVisible(), "Proposal title missing");
@@ -155,5 +161,8 @@
     await tab.waitForFunction(() => !document.querySelector(".composer [data-send]").disabled, null, { timeout: 12000 });
     assert(errors.length === 0, `Browser errors: ${errors.join(", ")}`);
     return { passed: true, verification: "MOCKED APIs and SSE only", checks, requests: requests.length, scriptErrors: errors };
+  } catch (error) {
+    error.message += ` (variant=${variant}, requests=${requests.length}, url=${tab.url()}, errors=${errors.join("; ")})`;
+    throw error;
   } finally { pending?.(); await context.close(); }
 })
