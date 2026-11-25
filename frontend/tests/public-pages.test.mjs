@@ -243,3 +243,23 @@ test("documentation contains working section anchors, a text flow and an illustr
   assert.ok(docs.includes("Question, then retrieval, then model, then citation check, then answer or decline"));
   assert.ok(docs.includes("Illustrative workflow, not a measured result"));
 });
+
+test("retrieval and ablation tables round every percentage while preserving two-decimal MRR", () => {
+  const root = new Node("div"), data = fixture();
+  data.retrieval.vector = { "recall@1": .7037, "recall@3": .9259, "recall@5": .9629, mrr: .8611 };
+  data.retrieval_ablation.vector_only = { "recall@5": .9629, mrr: .871, "held_out_recall@5": .9231, held_out_mrr: .8333 };
+  renderEvaluations(root, data);
+  assert.deepEqual(rows(findTable(root, "Retrieval results"))[0], ["vector", "70%", "93%", "96%", "0.86"]);
+  assert.deepEqual(rows(findTable(root, "Tune and held-out comparison"))[0], ["vector only", "96%", "0.87", "92%", "0.83", "—", "—"]);
+  for (const caption of ["Retrieval results", "Tune and held-out comparison"]) {
+    assert.ok(rows(findTable(root, caption)).flat().filter((text) => text.endsWith("%")).every((text) => /^\d+%$/.test(text)));
+  }
+});
+
+test("every evaluation table retains a labelled keyboard-focusable scroll region", () => {
+  const root = new Node("div"); renderEvaluations(root, fixture());
+  const regions = flatten(root).filter((node) => node.className === "eval-table-scroll");
+  assert.equal(regions.length, tagged(root, "table").length);
+  assert.ok(regions.every((node) => node.attributes.role === "region" && node.attributes["aria-label"] && node.tabIndex === 0));
+  assert.ok(regions.every((node) => typeof node.listeners.scroll === "function"));
+});

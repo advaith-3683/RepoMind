@@ -5,6 +5,7 @@
   <title>RepoMind — Understand your code</title>
   <meta name="referrer" content="no-referrer">
   <script src="/js/oauth-callback.js"></script>
+  <script src="/js/theme.js"></script>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
   <script src="/js/app.js" type="module"></script>
@@ -73,6 +74,7 @@
       <a href="/documentation" data-route>Documentation</a>
     </nav>
     <div class="header-account">
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false"></button>
       <div class="account-controls" data-account><span data-user-login></span><button type="button" data-sign-out>Sign out</button></div>
     </div>
   </header>
@@ -130,6 +132,7 @@
     <header class="mobile-header">
       <a href="/" data-route class="mobile-brand"><span class="mobile-wide">RepoMind</span><span class="mobile-narrow">R / M</span></a>
       <span class="mobile-account-name" data-account data-user-login></span>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false"></button>
       <button type="button" data-account data-sign-out>Sign out</button>
     </header>
     <main class="mobile-content" id="mobile-workspace" tabindex="-1">
@@ -188,6 +191,7 @@
     <header class="public-header">
       <a class="auth-brand" href="/" data-route aria-label="RepoMind home">R <span>/</span> M</a>
       <nav class="public-nav" aria-label="Main navigation"><a href="/workspace" data-route>Workspace</a><a href="/evaluations" data-route>Evaluations</a><a href="/documentation" data-route>Documentation</a></nav>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false"></button>
     </header>
     <main class="public-content" id="public-content" tabindex="-1">
       <section id="evaluations-page" aria-labelledby="evaluations-title" hidden>

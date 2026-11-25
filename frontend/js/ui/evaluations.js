@@ -63,6 +63,7 @@ function section(root, title) {
 }
 
 function table(root, caption, headers, rows) {
+  const frame = node("div"); frame.className = "eval-table-frame";
   const wrapper = node("div"); wrapper.className = "eval-table-scroll";
   wrapper.tabIndex = 0; wrapper.setAttribute("role", "region"); wrapper.setAttribute("aria-label", caption);
   const result = node("table"); result.append(node("caption", caption));
@@ -81,7 +82,12 @@ function table(root, caption, headers, rows) {
     });
     body.append(row);
   });
-  result.append(head, body); wrapper.append(result); root.append(wrapper);
+  result.append(head, body); wrapper.append(result); frame.append(wrapper); root.append(frame);
+  const updateHint = () => {
+    frame.dataset.overflow = String(wrapper.scrollWidth > wrapper.clientWidth + wrapper.scrollLeft + 1);
+  };
+  wrapper.addEventListener("scroll", updateHint, { passive: true });
+  if (typeof ResizeObserver === "function") new ResizeObserver(updateHint).observe(wrapper);
 }
 
 // Diagnostics can contain nested named subsets. Preserve their notes and supplied values.

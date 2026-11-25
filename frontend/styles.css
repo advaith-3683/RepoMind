@@ -41,12 +41,12 @@
   --font-serif: "Instrument Serif", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
-/* Prepared for later theme work. The static foundation defaults to light. */
+/* The blocking theme script selects a saved choice or the system preference. */
 [data-theme="dark"] {
   color-scheme: dark;
   --page: #151f25;
   --surface: #202d34;
-  --divider: #3b484f;
+  --divider: #687b86;
   --primary: #9ac7ec;
   --text: #f0ede6;
   --muted: #b3bfc4;
@@ -321,6 +321,7 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 .auth-pillars h2 { color: var(--text); font-size: 25px; }
 .auth-pillars section > p:last-child { font-size: 12px; line-height: 1.5; }
 .header-account { display: flex; align-items: center; justify-content: flex-end; margin-left: auto; flex-shrink: 0; min-width: 0; }
+.header-account { gap: 16px; }
 .account-controls { display: flex; align-items: center; gap: 16px; min-width: 0; font-size: 12px; }
 .account-controls [data-user-login] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 [data-sign-out] { padding: 0; background: transparent; color: var(--primary); white-space: nowrap; text-decoration: underline; cursor: pointer; }
@@ -380,6 +381,10 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 .eval-table-scroll caption { text-align: left; color: var(--muted); padding-bottom: 12px; }
 .eval-table-scroll th, .eval-table-scroll td { border-bottom: 1px solid var(--divider); padding: 12px; text-align: left; vertical-align: top; min-width: 100px; }
 .eval-table-scroll thead { background: var(--surface); }
+.eval-table-frame { position: relative; min-width: 0; }
+.eval-table-frame[data-overflow="true"]::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 28px; pointer-events: none; background: linear-gradient(to left, var(--surface), transparent); }
+.eval-table-scroll th:first-child { position: sticky; left: 0; z-index: 1; background: var(--page); box-shadow: 1px 0 var(--divider); }
+.eval-table-scroll thead th:first-child, .eval-current th:first-child { background: var(--surface); }
 .eval-current { background: var(--surface); box-shadow: inset 3px 0 var(--primary); }
 .eval-table-scroll [data-invalid="true"] th { text-decoration: line-through; }
 .documentation { max-width: none; }
@@ -427,6 +432,22 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
   .eval-charts { grid-template-columns: minmax(0, 1fr); }
 }
 .mobile-page-links { padding: 0 16px 12px; }
+.theme-toggle { display: inline-grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; padding: 10px; color: var(--primary); background: transparent; cursor: pointer; }
+.theme-toggle svg { display: block; width: 24px; height: 24px; overflow: visible; }
+.theme-disc { transition: r 400ms ease; }
+.theme-rays { transform-origin: 12px 12px; transition: transform 400ms ease, opacity 400ms ease; }
+.theme-cutout { transform: translate(12px, -12px); transition: transform 400ms ease; }
+[data-theme="dark"] .theme-disc { r: 9px; }
+[data-theme="dark"] .theme-rays { transform: rotate(45deg) scale(.3); opacity: 0; }
+[data-theme="dark"] .theme-cutout { transform: translate(0, 0); }
+@media (max-width: 900px) {
+  .mobile-header .theme-toggle { margin-left: auto; padding: 10px; }
+  .mobile-account-name { margin-left: auto; max-width: 90px; }
+  .public-header .public-nav { order: 1; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-disc, .theme-rays, .theme-cutout { transition: none; }
+}
 @media (max-width: 600px) {
   .public-header { padding: 20px; }
   .public-content { padding: 28px 20px 48px; }
