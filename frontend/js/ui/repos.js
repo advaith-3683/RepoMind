@@ -108,7 +108,9 @@ export function initRepositories({ autoLoad = true, onChange = () => {} } = {}) 
     document.querySelector("[data-selected-description]").textContent = selected
       ? hasIndexCounts ? `${selected.files_indexed} files · ${selected.chunks_indexed} chunks` : "Ready · Change repository"
       : authRequired ? "Authentication required" : "Select a ready repository";
-    document.querySelector("[data-repo-context]").textContent = selected ? `${selected.name} / Ready` : "No repository selected";
+    const context = document.querySelector("[data-repo-context]");
+    context.textContent = selected ? `${selected.name} / Ready` : "No repository selected";
+    context.title = context.textContent;
     document.querySelector("[data-repo-composer]").textContent = selected ? `Repo · ${selected.name}` : "No repository selected";
     document.querySelectorAll("[data-repo-count]").forEach((node) => {
       node.textContent = loading ? "Loading repositories…" : listError && !repos.length
