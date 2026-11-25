@@ -1,7 +1,8 @@
 import { askQuestion } from "../sse.js";
 import { initCitationPreview } from "./citation.js";
 import { appendAnswerText, answerNotice } from "./answer.js";
-import { createApproval } from "./approval.js";
+import { createApproval, diffPreview } from "./approval.js";
+import { activeQueryId, rememberQuery, forgetQuery, fetchConversation } from "./conversation.js";
 import { toast } from "./toast.js";
 
 const MODE_KEY = "repomind.askMode";
@@ -26,6 +27,7 @@ export function initChat() {
   const traces = [...document.querySelectorAll("[data-trace-content]")];
   const citationPreview = initCitationPreview();
   let repo = null, available = false, run = null, active = null, epoch = 0;
+  let savedId = activeQueryId(), restoration = null;
   let cooldownUntil = 0, cooldownTimer;
   let mode = "fast";
   try { if (localStorage.getItem(MODE_KEY) === "agent") mode = "agent"; } catch { /* Use default. */ }
@@ -38,7 +40,7 @@ export function initChat() {
     forms.forEach((form) => {
       const input = form.querySelector("textarea");
       input.disabled = !available;
-      form.querySelector("[data-send]").disabled = !available || !!active || !input.value.trim() || Date.now() < cooldownUntil;
+      form.querySelector("[data-send]").disabled = !available || !!active || !!restoration || !input.value.trim() || Date.now() < cooldownUntil;
       form.querySelector("[data-stop]").hidden = !active;
       form.querySelector("[data-character-count]").textContent = `${input.value.length} / 1000 characters`;
     });
@@ -50,6 +52,7 @@ export function initChat() {
     document.querySelectorAll("[data-try-agent]").forEach((button) => {
       button.disabled = !!active || !available || Date.now() < cooldownUntil;
     });
+    document.querySelectorAll("[data-new-chat]").forEach((button) => { button.disabled = !repo; });
   }
 
   function chooseMode(value) {
@@ -116,7 +119,20 @@ export function initChat() {
       if (run.approval) {
         card.append(run.approval.render());
       }
+      if (run.savedProposal) {
+        const payload = run.savedProposal.payload;
+        const proposal = element("section", "pending-approval");
+        proposal.append(element("h2", "", payload.title), element("p", "approval-body", payload.body),
+          element("p", "muted", "Proposal from the saved trace (read-only). No decision or publishing is performed when restoring a conversation."));
+        if (typeof payload.path === "string") proposal.append(element("p", "mono", payload.path));
+        if (typeof payload.diff === "string") proposal.append(diffPreview(payload.diff));
+        card.append(proposal);
+      }
       if (run.error) card.append(element("p", "chat-error", run.error));
+      if (run.restoreError) {
+        const retry = element("button", "repo-retry", "Retry restoring conversation"); retry.type = "button";
+        retry.addEventListener("click", () => restore(savedId)); card.append(retry);
+      }
       if (run.usage) {
         card.append(element("p", "run-usage", usageText(run.usage)));
         if (run.usage.llm_cache_hits > 0) card.append(element("p", "small muted", "Served from cache"));
@@ -153,13 +169,44 @@ export function initChat() {
     controls();
   }
 
+  async function restore(id) {
+    if (!id || !available || active || restoration) return;
+    const controller = new AbortController(), version = ++epoch;
+    restoration = controller;
+    run = { repoId: repo.id, question: "Saved conversation", mode, events: [], status: "Loading saved conversation…" };
+    render();
+    try {
+      const restored = await fetchConversation(id, repo.id, { signal: controller.signal });
+      if (version !== epoch) return;
+      run = restored;
+    } catch (error) {
+      if (version !== epoch || controller.signal.aborted) return;
+      run.status = "Could not restore conversation"; run.error = error.message; run.restoreError = true;
+    } finally {
+      if (version === epoch) { restoration = null; render(); }
+    }
+  }
+
+  function resetRun() {
+    run?.approval?.dispose(); epoch += 1;
+    active?.abort(); restoration?.abort(); active = null; restoration = null; run = null;
+    citationPreview.close();
+    forms.forEach((form) => { form.querySelector("textarea").value = ""; });
+  }
+
+  function clear() {
+    savedId = null; forgetQuery(); resetRun();
+    render();
+  }
+
   async function submit(question, selectedMode = mode) {
-    if (!available || active || Date.now() < cooldownUntil || !question.trim()) return;
+    if (!available || active || restoration || Date.now() < cooldownUntil || !question.trim()) return;
     const controller = new AbortController();
     const version = ++epoch;
     active = controller;
     citationPreview.close();
     run?.approval?.dispose();
+    savedId = null; forgetQuery();
     run = { repoId: repo.id, question, mode: selectedMode, status: "Connecting…", events: [] };
     render();
     try {
@@ -168,7 +215,8 @@ export function initChat() {
         onEvent(event) {
           if (version !== epoch) return;
           switch (event.type) {
-            case "start": run.queryId = event.query_id; run.mode = event.mode; run.status = "Agent working…"; break;
+            case "start": run.queryId = event.query_id; savedId = event.query_id; rememberQuery(savedId);
+              run.mode = event.mode; run.status = "Agent working…"; break;
             case "step": run.events.push(event); run.status = `${event.tool}…`; break;
             case "guardrail": run.events.push(event); break;
             case "answer": run.answer = event; run.status = "Finishing…"; break;
@@ -217,21 +265,23 @@ export function initChat() {
     form.querySelector("[data-stop]").addEventListener("click", () => { active?.abort(); input.focus(); });
   });
   document.querySelectorAll("[data-mode]").forEach((button) => button.addEventListener("click", () => chooseMode(button.dataset.mode)));
-  window.addEventListener("pagehide", () => { active?.abort(); run?.approval?.dispose(); citationPreview.close(); clearTimeout(cooldownTimer); });
+  document.querySelectorAll("[data-new-chat]").forEach((button) => button.addEventListener("click", () => { clear(); textarea()?.focus(); }));
+  window.addEventListener("pagehide", () => { active?.abort(); restoration?.abort(); run?.approval?.dispose(); citationPreview.close(); clearTimeout(cooldownTimer); });
   render();
   return {
-    setRepository(state) {
+    clear,
+    setRepository(state, { preserveActive = false } = {}) {
       const next = state.selectedRepo;
       available = !state.loading && !state.error && next?.status === "ready";
       const changed = next?.id !== repo?.id;
       if (changed) {
-        run?.approval?.dispose();
-        epoch += 1; active?.abort(); active = null; run = null; citationPreview.close();
-        forms.forEach((form) => { form.querySelector("textarea").value = ""; });
+        if (repo && !preserveActive) { savedId = null; forgetQuery(); }
+        resetRun();
       }
       repo = next;
       if (changed) render();
       else controls();
+      if (available && savedId && !run && !restoration) void restore(savedId);
     },
   };
 }

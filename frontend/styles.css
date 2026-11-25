@@ -96,6 +96,8 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 .workspace { display: grid; grid-template-rows: auto 1px minmax(0, 1fr) auto; gap: 20px; padding: 32px; min-width: 0; min-height: 0; }
 .context-header { display: flex; align-items: flex-start; gap: 40px; }
 .context-header p { font-weight: 600; color: var(--primary); font-size: 13px; }
+.new-chat { margin-left: auto; white-space: nowrap; }
+.mobile-page-links .new-chat { padding-block: 6px; font-size: 13px; }
 .conversation { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .workspace-empty { display: flex; flex-direction: column; gap: 20px; max-width: 704px; padding: 24px; background: var(--surface); overflow-wrap: anywhere; }
 .workspace-empty h2 { font-size: 29px; }

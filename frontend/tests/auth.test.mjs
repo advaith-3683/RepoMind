@@ -258,7 +258,7 @@ test("pageshow resets the sign-in phase and re-enables the actual button for ret
   vm.runInNewContext(script, {
     document, window, createAuth: () => auth, createRouter: () => ({ setPhase() {} }),
     initEvaluations: () => ({ load() {} }),
-    initChat: () => ({ setRepository() {} }),
+    initChat: () => ({ setRepository() {}, clear() {} }),
     initRepositories: () => ({ start() {}, stop() {} }), renderWorkspaceState() {},
   });
   await new Promise((resolve) => setImmediate(resolve));

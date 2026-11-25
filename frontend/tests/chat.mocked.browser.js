@@ -52,7 +52,11 @@
     return route.fulfill({ contentType: "text/event-stream", body: start + step + guardrail + terminal + done }).catch(() => {});
   });
 
-  async function reset() { await tab.goto(origin); await tab.waitForFunction(() => document.querySelector("[data-workspace-state]").dataset.workspaceState === "ready"); }
+  async function reset() {
+    const fresh = tab.locator("[data-new-chat]:visible");
+    if (await fresh.count() && await fresh.isEnabled()) await fresh.click();
+    await tab.goto(origin); await tab.waitForFunction(() => document.querySelector("[data-workspace-state]").dataset.workspaceState === "ready");
+  }
   async function send(text = "Where is the entry point?") {
     const mobile = tab.viewportSize().width <= 900;
     await tab.locator(mobile ? "#mobile-question" : "#question").fill(text);
@@ -134,6 +138,7 @@
     await tab.locator(".conversation [data-try-agent]").click(); await settled("Answer complete");
     assert(requests.at(-1).question === "Original submitted question" && requests.at(-1).mode === "agent", "Try Agent did not reuse original question");
     assert(await tab.locator("#question").inputValue() === "Unsubmitted draft", "Try Agent prefilled input");
+    await tab.locator("[data-new-chat]:visible").click();
     await tab.reload(); await tab.locator('[data-workspace-state="ready"]').first().waitFor();
     assert(await tab.locator('.composer [data-mode="agent"]').getAttribute("aria-pressed") === "true", "Mode did not persist");
 
