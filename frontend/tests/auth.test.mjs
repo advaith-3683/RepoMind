@@ -257,6 +257,7 @@ test("pageshow resets the sign-in phase and re-enables the actual button for ret
     .replace(/^import .*;\r?\n/gm, "");
   vm.runInNewContext(script, {
     document, window, createAuth: () => auth, createRouter: () => ({ setPhase() {} }),
+    initEvaluations: () => ({ load() {} }),
     initChat: () => ({ setRepository() {} }),
     initRepositories: () => ({ start() {}, stop() {} }), renderWorkspaceState() {},
   });

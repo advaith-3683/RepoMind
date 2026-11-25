@@ -163,3 +163,40 @@ test("a normal first load of / while signed in still goes to workspace", () => {
   assert.equal(app.location.pathname, "/workspace");
   assert.deepEqual(app.calls, [{ method: "replaceState", url: "/workspace" }]);
 });
+
+test("public pages render on direct visits in every auth phase without redirects", () => {
+  for (const path of ["/evaluations", "/documentation"]) {
+    for (const phase of ["loading", "signed-out", "signed-in", "local", "error"]) {
+      const app = fixture(path); app.router.setPhase(phase);
+      assert.equal(app.location.pathname, path);
+      assert.equal(app.views.at(-1), path.slice(1));
+      assert.equal(app.page.title, path === "/evaluations" ? "RepoMind — Evaluations" : "RepoMind — Documentation");
+      assert.deepEqual(app.calls, []);
+    }
+  }
+});
+
+test("public links use pushState and Back/Forward preserve public views for either session", () => {
+  for (const phase of ["signed-out", "signed-in"]) {
+    const app = fixture("/documentation"); app.router.setPhase(phase);
+    assert.equal(app.click("/evaluations"), true);
+    app.click("/documentation");
+    const before = app.calls.length;
+    app.back(); assert.equal(app.views.at(-1), "evaluations");
+    assert.equal(app.page.title, "RepoMind — Evaluations");
+    app.forward(); assert.equal(app.views.at(-1), "documentation");
+    assert.equal(app.calls.length, before);
+    assert.ok(app.calls.every((call) => call.method === "pushState"));
+    app.router.setPhase("signed-out");
+    assert.equal(app.views.at(-1), "documentation");
+  }
+});
+
+test("public navigation remains available during auth loading", () => {
+  const app = fixture();
+  assert.equal(app.click("/evaluations"), true);
+  assert.equal(app.views.at(-1), "evaluations");
+  app.router.setPhase("signed-in");
+  assert.equal(app.location.pathname, "/evaluations");
+  assert.deepEqual(app.calls, [{ method: "pushState", url: "/evaluations" }]);
+});

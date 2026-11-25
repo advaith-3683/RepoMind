@@ -1,5 +1,6 @@
 import { askQuestion } from "../sse.js";
-import { initCitationPreview, citationParts } from "./citation.js";
+import { initCitationPreview } from "./citation.js";
+import { appendAnswerText, answerNotice } from "./answer.js";
 import { createApproval } from "./approval.js";
 import { toast } from "./toast.js";
 
@@ -77,7 +78,8 @@ export function initChat() {
       if (run.answer) {
         const answer = run.answer;
         if (!answer.found) card.append(element("h2", "", "Not found in this repo"));
-        if (answer.confidence === "low") card.append(element("p", "chat-warning", "Low confidence: verify against the cited code."));
+        const notice = answerNotice(answer);
+        if (notice) card.append(element("p", "chat-warning", notice));
         const text = element("p", "answer-text");
         const used = new Set();
         const chip = (citation, label) => {
@@ -86,9 +88,9 @@ export function initChat() {
           button.addEventListener("click", () => citationPreview.open(run.repoId, citation, button));
           return button;
         };
-        citationParts(answer.text, answer.citations).forEach((part) => {
-          if (part.citation) { text.append(chip(part.citation, part.text)); used.add(part.citation); }
-          else text.append(element("span", "", part.text));
+        appendAnswerText(text, answer.text, answer.citations, (citation, label) => {
+          used.add(citation);
+          return chip(citation, label);
         });
         card.append(text);
         if (answer.citations.length) {
