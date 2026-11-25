@@ -8,8 +8,8 @@
   const assert = (value, message) => { if (!value) throw Error(message); };
   const payload = {
     meta: { title: "Fixture evaluation", repo: "fixture/repo", model: "fixture-model", fast_top_k: 5, search_preview_lines: 60,
-      golden_set: { questions: 12 }, limits: ["One repository.", "Small golden set.", "Proxy groundedness."] },
-    agent: { answer_rate: .75, decline_accuracy: 1, file_recall: .6, keyword_hit: .7, groundedness: .8,
+      golden_set: { questions: 12, answerable: 9, should_decline: 3 }, limits: ["One repository.", "Small golden set.", "Proxy groundedness."] },
+    agent: { n_errors: 0, answer_rate: .75, decline_accuracy: 1, file_recall: .6, keyword_hit: .7, groundedness: .8,
       error_rate: 0, latency_p50_ms: 1234, latency_p95_ms: 4567, avg_tokens: 123.456 },
     redteam: { attacks_total: 12, attacks_blocked: 11, benign_total: 8, false_positives: 1 },
     retrieval: { vector: { "recall@1": .1, "recall@3": .3, "recall@5": .5, mrr: .456 } },
@@ -46,10 +46,10 @@
       await tab.waitForFunction((phase) => document.documentElement.dataset.authState === phase, signedIn ? "signed-in" : "signed-out");
       assert(await tab.title() === "RepoMind — Documentation", "Documentation title stale");
       assert(await tab.locator("#documentation-page a[href^='https://github.com']").count() === 0, "Documentation links to private repository");
-      await tab.locator("#public-pages nav").getByRole("link", { name: "Evaluations" }).click(); await visible("/evaluations");
+      await tab.locator(".public-header nav").getByRole("link", { name: "Evaluations" }).click(); await visible("/evaluations");
       await tab.getByRole("heading", { name: "Fixture evaluation" }).waitFor();
       assert(await tab.locator(".eval-current").textContent().then((text) => text.includes("Current default")), "Current default not marked");
-      assert(await tab.locator('[data-invalid="true"]').textContent().then((text) => text.includes("invalid") && text.includes("Provider quota exhausted.")), "Invalid run note missing");
+      assert(await tab.locator('.eval-table-scroll [data-invalid="true"]').textContent().then((text) => text.includes("invalid") && text.includes("Provider quota exhausted.")), "Invalid run note missing");
       await tab.goBack(); await visible("/documentation");
       await tab.goForward(); await visible("/evaluations");
       assert(await tab.title() === "RepoMind — Evaluations", "Evaluations title stale after Forward");
@@ -62,6 +62,27 @@
         await tab.goto(origin + path); await visible(path);
         if (path === "/evaluations") await tab.getByRole("heading", { name: "Fixture evaluation" }).waitFor();
         assert(await tab.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Page overflow at ${width} on ${path}`);
+        if (path === "/evaluations") {
+          assert(await tab.locator(".eval-stat").count() === 4, "Missing summary cards");
+          assert(await tab.locator(".eval-chart").count() === 2, "Missing charts");
+          assert(await tab.evaluate(() => document.querySelector(".eval-limits").getBoundingClientRect().top < document.querySelector("table").getBoundingClientRect().top), "Limits follows detailed tables");
+          const columns = await tab.locator(".eval-stats").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
+          assert(columns === (width > 900 ? 4 : 2), "Unexpected card layout");
+        } else if (width <= 900) {
+          assert(await tab.locator(".documentation-toc").isHidden(), "Desktop contents visible on mobile");
+          assert(await tab.locator(".documentation-toc-mobile").evaluate((node) => !node.open), "Mobile contents should start collapsed");
+          await tab.locator(".documentation-toc-mobile summary").click();
+          await tab.locator(".documentation-toc-mobile").getByRole("link", { name: "Worked example", exact: true }).click();
+          assert(await tab.evaluate(() => location.pathname === "/documentation" && location.hash === "#docs-example"), "Contents link changed page");
+          assert(await tab.locator("#docs-example").isVisible(), "Example anchor is not visible");
+        } else {
+          assert(await tab.locator(".documentation-toc-mobile").isHidden(), "Mobile contents visible on desktop");
+          const sticky = await tab.locator(".documentation-toc").evaluate((node) => {
+            window.scrollTo(0, 600);
+            return { position: getComputedStyle(node).position, top: node.getBoundingClientRect().top };
+          });
+          assert(sticky.position === "sticky" && sticky.top >= 23 && sticky.top <= 25, "Desktop contents is not sticky");
+        }
       }
       checks.push(`layout at ${width}px`);
     }

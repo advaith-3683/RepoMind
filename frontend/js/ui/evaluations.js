@@ -3,7 +3,51 @@ import { publicRequest } from "../api.js";
 const missing = "—";
 const value = (item) => item === undefined || item === null ? missing : String(item);
 const decimal = (item) => typeof item === "number" && Number.isFinite(item) ? item.toFixed(2) : missing;
-const percent = (item) => typeof item === "number" && Number.isFinite(item) ? `${(item * 100).toFixed(2)}%` : missing;
+const whole = (item) => typeof item === "number" && Number.isFinite(item) ? item.toFixed(0) : missing;
+const percent = (item) => typeof item === "number" && Number.isFinite(item) ? `${(item * 100).toFixed(0)}%` : missing;
+
+function countPair(text) {
+  const match = typeof text === "string" && /^(\d+)\/(\d+)$/.exec(text);
+  if (!match) return null;
+  const count = Number(match[1]), total = Number(match[2]);
+  return Number.isSafeInteger(count) && Number.isSafeInteger(total) && total > 0 && count <= total ? { count, total } : null;
+}
+
+function summary(root, data) {
+  const run = data.history?.at(-1);
+  if (!data.agent && !data.redteam && !run) return;
+  const cards = node("div"); cards.className = "eval-stats";
+  const answered = countPair(run?.answered), declined = countPair(run?.declined);
+  for (const [label, text] of [["Answered", answered ? `${answered.count} / ${answered.total}` : missing],
+    ["Declined", declined ? `${declined.count} / ${declined.total}` : missing], ["Errors", whole(data.agent?.n_errors)],
+    ["Red-team blocked", `${value(data.redteam?.attacks_blocked)} / ${value(data.redteam?.attacks_total)}`]]) {
+    const card = node("div"); card.className = "eval-stat";
+    const number = node("p", text); number.className = "eval-stat-value";
+    card.append(node("h3", label), number);
+    if (label === "Declined") card.append(node("p", "Should-decline questions"));
+    if ((label === "Answered" || label === "Declined") && run?.valid === false) card.append(node("p", "invalid run"));
+    cards.append(card);
+  }
+  root.append(cards, node("p", `Model: ${value(data.meta?.model)} · one repository, single run`));
+}
+
+function barChart(root, title, description, entries) {
+  const figure = node("figure"); figure.className = "eval-chart";
+  figure.append(node("figcaption", title), node("p", description));
+  const list = node("ul"); list.className = "eval-bars";
+  entries.forEach(({ label, text, ratio, invalid, current }) => {
+    const row = node("li"); row.className = "eval-bar-row";
+    if (invalid) row.dataset.invalid = "true";
+    if (current) row.dataset.current = "true";
+    row.append(node("span", `${label}${invalid ? " · invalid" : ""}${current ? " · current default" : ""}`), node("strong", text));
+    const track = node("span"); track.className = "eval-bar-track"; track.setAttribute("aria-hidden", "true");
+    const fill = node("span"); fill.className = "eval-bar-fill";
+    // Only validated numeric values reach CSS; the supplied text stays visible beside the bar.
+    fill.style.width = `${typeof ratio === "number" && Number.isFinite(ratio) && ratio >= 0 && ratio <= 1 ? ratio * 100 : 0}%`;
+    track.append(fill); row.append(track); list.append(row);
+  });
+  figure.append(list); root.append(figure);
+}
 
 function node(tag, text) {
   const result = document.createElement(tag);
@@ -19,6 +63,7 @@ function section(root, title) {
 }
 
 function table(root, caption, headers, rows) {
+  const frame = node("div"); frame.className = "eval-table-frame";
   const wrapper = node("div"); wrapper.className = "eval-table-scroll";
   wrapper.tabIndex = 0; wrapper.setAttribute("role", "region"); wrapper.setAttribute("aria-label", caption);
   const result = node("table"); result.append(node("caption", caption));
@@ -37,7 +82,12 @@ function table(root, caption, headers, rows) {
     });
     body.append(row);
   });
-  result.append(head, body); wrapper.append(result); root.append(wrapper);
+  result.append(head, body); wrapper.append(result); frame.append(wrapper); root.append(frame);
+  const updateHint = () => {
+    frame.dataset.overflow = String(wrapper.scrollWidth > wrapper.clientWidth + wrapper.scrollLeft + 1);
+  };
+  wrapper.addEventListener("scroll", updateHint, { passive: true });
+  if (typeof ResizeObserver === "function") new ResizeObserver(updateHint).observe(wrapper);
 }
 
 // Diagnostics can contain nested named subsets. Preserve their notes and supplied values.
@@ -61,19 +111,42 @@ export function renderEvaluations(root, data = {}) {
   const meta = data.meta;
   if (meta) {
     const header = section(root, meta.title || "Run configuration");
+    summary(header, data);
+    if (meta.golden_set) header.append(node("p", `${value(meta.golden_set.answerable)} answerable, ${value(meta.golden_set.should_decline)} should decline`));
     const list = node("dl"); list.className = "eval-meta";
     for (const [label, item] of [["Repository", meta.repo], ["Model", meta.model], ["Fast top K", meta.fast_top_k],
       ["Search preview lines", meta.search_preview_lines], ["Golden set size", meta.golden_set?.questions]]) {
       list.append(node("dt", label), node("dd", value(item)));
     }
     header.append(list);
+  } else summary(root, data);
+  if (Array.isArray(meta?.limits)) {
+    const list = node("ul");
+    meta.limits.filter((item) => typeof item === "string").forEach((item) => list.append(node("li", item)));
+    const limits = section(root, "Limits"); limits.className = "eval-limits"; limits.append(list);
   }
+  const charts = node("div"); charts.className = "eval-charts";
+  if (Array.isArray(data.history) && data.history.length) {
+    barChart(charts, "Answered by run", "Answered / answerable questions. Invalid runs are not comparable; detailed notes follow in Run history.",
+      data.history.map((run, index) => {
+        const pair = countPair(run.answered);
+        return { label: `Run ${value(run.run)}`, text: value(run.answered), ratio: pair ? pair.count / pair.total : null,
+          invalid: run.valid === false, current: index === data.history.length - 1 };
+      }));
+  }
+  if (data.retrieval) {
+    barChart(charts, "Retrieval recall@5", "Expected file coverage in the top five results, on a 0–100% scale.",
+      ["vector", "keyword", "hybrid"].filter((mode) => data.retrieval[mode]).map((mode) => ({
+        label: mode, text: percent(data.retrieval[mode]["recall@5"]), ratio: data.retrieval[mode]["recall@5"],
+      })));
+  }
+  if (charts.childElementCount) root.append(charts);
   if (data.agent) {
     const agent = data.agent;
     const metrics = [["Answer rate", "answer_rate", percent], ["Correctly declined", "decline_accuracy", percent],
       ["File recall", "file_recall", percent], ["Keyword hit", "keyword_hit", percent], ["Groundedness", "groundedness", percent],
-      ["Error rate", "error_rate", percent], ["Latency p50 (ms)", "latency_p50_ms", decimal],
-      ["Latency p95 (ms)", "latency_p95_ms", decimal], ["Average tokens", "avg_tokens", decimal]];
+      ["Error rate", "error_rate", percent], ["Latency p50 (ms)", "latency_p50_ms", whole],
+      ["Latency p95 (ms)", "latency_p95_ms", whole], ["Average tokens", "avg_tokens", whole]];
     table(section(root, "End-to-end"), "End-to-end results", ["Metric", "Value"],
       metrics.map(([label, key, format]) => ({ cells: [label, format(agent[key])] })));
   }
@@ -107,11 +180,6 @@ export function renderEvaluations(root, data = {}) {
           [run.valid === false ? "invalid" : "", index === data.history.length - 1 ? "Current default" : ""].filter(Boolean).join(" · ") || missing,
           value(run.note)],
       })));
-  }
-  if (Array.isArray(meta?.limits)) {
-    const list = node("ul");
-    meta.limits.filter((item) => typeof item === "string").forEach((item) => list.append(node("li", item)));
-    section(root, "Limits").append(list);
   }
   if (data.diagnostics !== undefined) details(section(root, "Diagnostics"), data.diagnostics);
   if (!root.childElementCount) root.append(node("p", "No evaluation results yet."));

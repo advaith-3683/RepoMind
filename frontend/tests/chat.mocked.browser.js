@@ -112,13 +112,14 @@
       }
     }
     await tab.setViewportSize({ width: 1440, height: 900 });
-    for (const [value, expected] of [["no-citations", "Answer complete"], ["not-found", "Not found in this repo"],
+    for (const [value, expected] of [["no-citations", "Answer complete"], ["not-found", "No supporting code found in this repo"],
       ["approval", "Pending approval"], ["error", errorMessage], ["malformed", "The answer service sent a malformed event. Please retry."],
       ["cut", "The answer stream ended before completion. Please retry."], ["network", "Could not reach the repository service. Check your connection and retry."],
       ["validation", "Fixture guardrail rejected this query."]]) {
       variant = value; await reset(); await send(); const output = await settled(expected);
       if (["no-citations", "not-found"].includes(value)) assert(await output.locator(".citation-chip").count() === 0, "Parsed inline citation text");
       if (value === "not-found") {
+        assert(await output.getByRole("heading", { name: "Not found in this repo", exact: true }).count() === 0, "Duplicate declined-answer heading");
         assert(await output.getByText("No supporting code found in this repo", { exact: true }).isVisible(), "Missing absence-of-evidence notice");
         assert(await output.getByText("Low confidence: verify against the cited code.", { exact: true }).count() === 0, "Declined answer retained confidence warning");
       }
