@@ -6,7 +6,7 @@ import { appendAnswerText, answerNotice } from "../js/ui/answer.js";
 import { configureAuthentication } from "../js/api.js";
 
 class Node {
-  constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {}; this.attributes = {}; this.listeners = {}; }
+  constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {}; this.attributes = {}; this.listeners = {}; this.style = {}; }
   set textContent(text) { this.children = []; this.text = String(text); }
   get textContent() { return (this.text || "") + this.children.map((child) => child.textContent).join(""); }
   get childElementCount() { return this.children.length; }
@@ -22,8 +22,8 @@ const findTable = (root, caption) => tagged(root, "table").find((table) => table
 const rows = (table) => tagged(table, "tbody")[0].children.map((row) => row.children.map((cell) => cell.textContent));
 const fixture = () => ({
   meta: { title: "Fixture evaluation", repo: "fixture/repo", model: "fixture-model", fast_top_k: 5, search_preview_lines: 60,
-    golden_set: { questions: 12 }, limits: ["One repository.", "Small golden set.", "Proxy groundedness."] },
-  agent: { answer_rate: .75, decline_accuracy: 1, file_recall: .6, keyword_hit: .7, groundedness: .8, error_rate: 0,
+    golden_set: { questions: 12, answerable: 9, should_decline: 3 }, limits: ["One repository.", "Small golden set.", "Proxy groundedness."] },
+  agent: { n_errors: 0, answer_rate: .75, decline_accuracy: 1, file_recall: .6, keyword_hit: .7, groundedness: .8, error_rate: 0,
     latency_p50_ms: 1234, latency_p95_ms: 4567, avg_tokens: 123.456 },
   redteam: { attacks_total: 12, attacks_blocked: 11, benign_total: 8, false_positives: 1 },
   retrieval: Object.fromEntries(["vector", "keyword", "hybrid"].map((mode) => [mode, { "recall@1": .1, "recall@3": .3, "recall@5": .5, mrr: .456 }])),
@@ -44,8 +44,8 @@ test("evaluations render supplied metadata and all end-to-end metrics with units
   renderEvaluations(root, data);
   for (const text of ["Fixture evaluation", "fixture/repo", "fixture-model", "Golden set size12", "Fast top K5", "Search preview lines60"]) assert.ok(root.textContent.includes(text), text);
   assert.deepEqual(rows(findTable(root, "End-to-end results")), [
-    ["Answer rate", "75.00%"], ["Correctly declined", "100.00%"], ["File recall", "60.00%"], ["Keyword hit", "70.00%"],
-    ["Groundedness", "80.00%"], ["Error rate", "0.00%"], ["Latency p50 (ms)", "1234.00"], ["Latency p95 (ms)", "4567.00"], ["Average tokens", "123.46"],
+    ["Answer rate", "75%"], ["Correctly declined", "100%"], ["File recall", "60%"], ["Keyword hit", "70%"],
+    ["Groundedness", "80%"], ["Error rate", "0%"], ["Latency p50 (ms)", "1234"], ["Latency p95 (ms)", "4567"], ["Average tokens", "123"],
   ]);
   assert.equal(JSON.stringify(data), before, "Rendering must not mutate or recompute the results");
 });
@@ -54,10 +54,10 @@ test("red-team, retrieval and ablation display the API values without deriving n
   const root = new Node("div"); renderEvaluations(root, fixture());
   assert.ok(root.textContent.includes("Attacks blocked: 11 out of 12"));
   assert.ok(root.textContent.includes("False positives: 1 out of 8"));
-  assert.deepEqual(rows(findTable(root, "Retrieval results")), ["vector", "keyword", "hybrid"].map((mode) => [mode, "10.00%", "30.00%", "50.00%", "0.46"]));
+  assert.deepEqual(rows(findTable(root, "Retrieval results")), ["vector", "keyword", "hybrid"].map((mode) => [mode, "10%", "30%", "50%", "0.46"]));
   assert.deepEqual(rows(findTable(root, "Tune and held-out comparison")), [
-    ["vector only", "80.00%", "0.75", "60.00%", "0.55", "—", "—"],
-    ["hybrid best on tune", "90.00%", "0.85", "80.00%", "0.75", "0.10", "true"],
+    ["vector only", "80%", "0.75", "60%", "0.55", "—", "—"],
+    ["hybrid best on tune", "90%", "0.85", "80%", "0.75", "0.10", "true"],
   ]);
   assert.ok(root.textContent.includes("Tune questions: 7 · Held-out questions: 5"));
 });
@@ -90,8 +90,8 @@ test("every limit and nested diagnostics note is visible and untrusted strings r
 test("absent sections and missing metrics stay unavailable rather than becoming zero", () => {
   const root = new Node("div"); renderEvaluations(root, {});
   assert.equal(root.textContent, "No evaluation results yet.");
-  renderEvaluations(root, { agent: { answer_rate: 0 } });
-  assert.equal(rows(findTable(root, "End-to-end results"))[0][1], "0.00%");
+  renderEvaluations(root, { agent: { n_errors: 0, answer_rate: 0 } });
+  assert.equal(rows(findTable(root, "End-to-end results"))[0][1], "0%");
   assert.ok(rows(findTable(root, "End-to-end results")).slice(1).every((row) => row[1] === "—"));
   assert.equal(tagged(root, "table").length, 1);
 });
@@ -158,4 +158,88 @@ test("navigation links and in-app documentation ship without private-repository 
   const docs = html.split('id="documentation-page"')[1].split("</article>")[0];
   for (const topic of ["What RepoMind is", "Fast vs Agent mode", "How citations are verified", "Guardrails", "Approving and publishing changes", "How to read the Evaluations page", "Known limits"]) assert.ok(docs.includes(topic));
   assert.ok(!docs.includes('href="https://github.com/'));
+});
+
+test("four summary cards use API counts, errors and attack totals, not rounded rates", () => {
+  const root = new Node("div"), data = fixture();
+  data.agent.answer_rate = .99; data.agent.decline_accuracy = .1; data.agent.n_errors = 4;
+  renderEvaluations(root, data);
+  const cards = flatten(root).filter((node) => node.className === "eval-stat");
+  assert.equal(cards.length, 4);
+  assert.deepEqual(cards.map((card) => tagged(card, "p")[0].textContent), ["7 / 9", "3 / 3", "4", "11 / 12"]);
+  assert.ok(root.textContent.includes("Model: fixture-model · one repository, single run"));
+  assert.ok(root.textContent.includes("9 answerable, 3 should decline"));
+  const all = flatten(root);
+  assert.ok(all.indexOf(cards[0]) < all.indexOf(tagged(root, "table")[0]));
+});
+
+test("summary cards preserve missing counts and mark a latest invalid run", () => {
+  const root = new Node("div"), data = fixture();
+  data.history = [{ run: 7, valid: false, answered: null, declined: null }];
+  delete data.agent.n_errors;
+  renderEvaluations(root, data);
+  const cards = flatten(root).filter((node) => node.className === "eval-stat");
+  assert.deepEqual(cards.slice(0, 3).map((card) => tagged(card, "p")[0].textContent), ["—", "—", "—"]);
+  assert.ok(cards[0].textContent.includes("invalid run"));
+  assert.ok(cards[1].textContent.includes("invalid run"));
+});
+
+test("history chart supplies textual counts and labels for invalid and current runs", () => {
+  const root = new Node("div"), data = fixture();
+  data.history[0].answered = "2/9";
+  renderEvaluations(root, data);
+  const chart = tagged(root, "figure").find((figure) => figure.children[0].textContent === "Answered by run");
+  const bars = tagged(chart, "li");
+  assert.equal(bars.length, 2);
+  assert.ok(bars[0].textContent.includes("Run 1 · invalid"));
+  assert.ok(bars[0].textContent.includes("2/9"));
+  assert.ok(bars[1].textContent.includes("Run 2 · current default"));
+  assert.equal(bars[0].dataset.invalid, "true"); assert.equal(bars[1].dataset.current, "true");
+  const fills = flatten(chart).filter((node) => node.className === "eval-bar-fill");
+  assert.equal(fills[0].style.width, `${2 / 9 * 100}%`);
+  assert.equal(fills[1].style.width, `${7 / 9 * 100}%`);
+  assert.ok(flatten(chart).filter((node) => node.className === "eval-bar-track").every((node) => node.attributes["aria-hidden"] === "true"));
+});
+
+test("retrieval chart shows all supplied recall@5 values with a shared 0–100% scale", () => {
+  const root = new Node("div"), data = fixture();
+  data.retrieval.vector["recall@5"] = .926;
+  data.retrieval.keyword["recall@5"] = .374;
+  data.retrieval.hybrid["recall@5"] = .815;
+  renderEvaluations(root, data);
+  const chart = tagged(root, "figure").find((figure) => figure.children[0].textContent === "Retrieval recall@5");
+  assert.deepEqual(tagged(chart, "li").map((row) => row.children.slice(0, 2).map((item) => item.textContent)),
+    [["vector", "93%"], ["keyword", "37%"], ["hybrid", "82%"]]);
+  assert.deepEqual(flatten(chart).filter((node) => node.className === "eval-bar-fill").map((node) => node.style.width),
+    [.926, .374, .815].map((ratio) => `${ratio * 100}%`));
+});
+
+test("malformed or missing chart data never becomes a CSS value or fabricated count", () => {
+  const root = new Node("div"), data = fixture();
+  data.history[0].answered = "99/0"; data.history[1].answered = "<img src=x>";
+  data.retrieval.vector["recall@5"] = "10%; color: red";
+  renderEvaluations(root, data);
+  assert.equal(tagged(root, "img").length, 0);
+  assert.ok(root.textContent.includes("<img src=x>"));
+  const fills = flatten(root).filter((node) => node.className === "eval-bar-fill");
+  assert.ok(fills.slice(0, 3).every((node) => node.style.width === "0%"));
+});
+
+test("Limits is a visible callout before every detailed table and appears only once", () => {
+  const root = new Node("div"); renderEvaluations(root, fixture());
+  const limits = flatten(root).filter((node) => node.className === "eval-limits");
+  assert.equal(limits.length, 1); assert.equal(tagged(limits[0], "li").length, 3);
+  const all = flatten(root);
+  assert.ok(tagged(root, "table").every((table) => all.indexOf(limits[0]) < all.indexOf(table)));
+});
+
+test("documentation contains working section anchors, a text flow and an illustrative example", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const docs = html.split('id="documentation-page"')[1].split("</article>")[0];
+  for (const key of ["overview", "modes", "citations", "guardrails", "publishing", "evaluations", "example", "limits"]) {
+    assert.ok(docs.includes(`href="#docs-${key}"`)); assert.ok(docs.includes(`id="docs-${key}"`));
+  }
+  assert.match(docs, /<details class="documentation-toc-mobile"><summary>/);
+  assert.ok(docs.includes("Question, then retrieval, then model, then citation check, then answer or decline"));
+  assert.ok(docs.includes("Illustrative workflow, not a measured result"));
 });

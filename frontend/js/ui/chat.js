@@ -77,7 +77,6 @@ export function initChat() {
       card.append(element("p", "eyebrow", run.status));
       if (run.answer) {
         const answer = run.answer;
-        if (!answer.found) card.append(element("h2", "", "Not found in this repo"));
         const notice = answerNotice(answer);
         if (notice) card.append(element("p", "chat-warning", notice));
         const text = element("p", "answer-text");
