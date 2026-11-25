@@ -62,7 +62,7 @@ project owner, 27 answerable questions, so differences of a few points are noise
 identifier-style queries (the agent's `find_symbol` tool covers those); this set does not test that.
 
 ## Configuration the numbers apply to
-All end-to-end results above use `FAST_TOP_K=5` (five chunks per question), `SEARCH_PREVIEW_LINES=30`, `RETRIEVAL_MODE=vector`, one
+End-to-end runs 1-4 use `FAST_TOP_K=5` (five chunks per question) and `SEARCH_PREVIEW_LINES=30`; run 5 and the current default use `SEARCH_PREVIEW_LINES=60`. Other settings: `RETRIEVAL_MODE=vector`, one
 model (`openai/gpt-oss-120b`, no fallback), `LLM_CACHE=off`. The deployed app must use the same `FAST_TOP_K=5` for these numbers to
 describe it. The curated copy of the latest valid run that the Evaluations page reads is `backend/app/evals/published/latest.json`;
 update it (and `history`) whenever a new valid full run replaces it.
@@ -81,6 +81,7 @@ one full fast-mode run on a fresh quota day, no fallback key, `limit 3` first.
 | 2, 2026-11-23 | vector default | invalid, 7 rate-limit errors | | | | |
 | 3, 2026-11-24 | vector default, 30 preview lines | 18 (67%) | 5 | 0 | 0.61 | 0.65 |
 | 4, 2026-11-25 | + citation normalisation, stronger citation prompt, absence rules | 23 (85%) | 5 | 0 | 0.80 | 0.80 |
+| 5, 2026-11-25 | same as run 4 + 60 preview lines (now the default) | 25 (93%) | 5 | 0 | 0.85 | 0.87 |
 
 What run 3 → run 4 shows: in run 3, 5 questions ended in `needs_clarification` (answer rejected because it had no verifiable
 `[path:start-end]` citation; the logs showed correct prose without brackets, fullwidth brackets and non-breaking hyphens). In run 4
@@ -92,3 +93,12 @@ Limits: one repo, 27 answerable questions, one run per configuration. Run 1 and 
 may partly be a low draw; the mechanism above (ungrounded 5 → 0) is the stronger evidence. Treat differences of a few
 questions as noise, and do not generalise beyond this repo. Run 4 bundles three changes (citation normalisation, prompt
 wording, absence rules), so the gain cannot be attributed to any one of them.
+
+## Run 5 (2026-11-25): 60-line chunk preview, now the default
+Same code as run 4, `SEARCH_PREVIEW_LINES=60`: 25 of 27 answered (93%), 5/5 declined, 0 errors, file recall 0.85, keyword hit 0.87,
+p95 latency 10.7 s (16.0 s in run 4), average 2,837 tokens per question (+9% vs run 4's 2,600).
+q05 and q27 answer now; q10 and q26 still say "not found". Those two had answered in the earlier 4-question diagnostic at
+60 lines, so single-question outcomes vary from run to run and the 2-question gain over run 4 is within noise. The case for 60 rests
+on three consistent observations (6 of 9 failed questions answering in the first diagnostic, 4 of 4 in the second, +2 on the full set)
+plus a small token cost, not on a significance test. Remaining known failures: q10 and q26 ("not found" despite the right files
+being retrieved) and q20 (answered with the wrong file; vector top-5 missed `models.py`).
