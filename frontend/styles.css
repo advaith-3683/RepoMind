@@ -370,6 +370,23 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 .public-content h1 { margin-block: 8px 32px; font-size: 44px; }
 .public-content section + section, .public-content [data-evaluations] > section { margin-top: 32px; }
 .public-content h2 { margin-bottom: 14px; }
+#public-pages .public-content {
+  --public-body-size: 1rem;
+  --public-table-size: .9375rem;
+  --public-note-size: .875rem;
+  --public-small-size: .8125rem;
+}
+#public-pages .public-content :where(p:not(.eyebrow):not(.eval-stat-value), li) { font-size: var(--public-body-size); line-height: 1.65; max-width: 70ch; }
+#evaluations-page .eval-table-scroll table, #evaluations-page .eval-meta { font-size: var(--public-table-size); }
+#evaluations-page .eval-table-scroll caption, #evaluations-page .eval-note, #evaluations-page .eval-note p,
+#evaluations-page .eval-stat h3, #documentation-page .documentation-flow figcaption { font-size: var(--public-note-size); }
+#evaluations-page .eval-note { line-height: 1.65; }
+#evaluations-page .eval-date { white-space: nowrap; }
+#evaluations-page .eval-stat > p:last-child:not(.eval-stat-value), #evaluations-page .eval-chart > p,
+#evaluations-page .eval-bar-row strong { font-size: var(--public-small-size); }
+#documentation-page :is(.documentation-toc, .documentation-toc-mobile) a { font-size: var(--public-table-size); line-height: 1.65; }
+#documentation-page .documentation-example p, #documentation-page :is(code, pre) { font-size: var(--public-note-size); font-family: var(--font-mono); line-height: 1.65; max-width: 70ch; }
+#documentation-page pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .public-content p, .public-content li, .public-content dd { line-height: 1.65; overflow-wrap: anywhere; }
 .public-content ul { list-style: disc; padding-left: 22px; }
 .public-content li + li, .documentation p + p { margin-top: 8px; }

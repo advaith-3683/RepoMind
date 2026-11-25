@@ -84,6 +84,8 @@ function table(root, caption, headers, rows) {
     cells.forEach((text, index) => {
       const cell = node(index === 0 ? "th" : "td", text);
       if (index === 0) cell.setAttribute("scope", "row");
+      if (headers[index] === "Note") cell.className = "eval-note";
+      if (headers[index] === "Date") cell.className = "eval-date";
       row.append(cell);
     });
     body.append(row);
@@ -106,7 +108,9 @@ function details(root, data) {
     const list = node("dl");
     Object.entries(data).forEach(([key, item]) => {
       list.append(node("dt", key.replaceAll("_", " ")));
-      const description = node("dd"); details(description, item); list.append(description);
+      const description = node("dd");
+      if (key === "note") description.className = "eval-note";
+      details(description, item); list.append(description);
     });
     root.append(list);
   } else root.append(node("p", data));
@@ -170,7 +174,8 @@ export function renderEvaluations(root, data = {}) {
   }
   if (data.retrieval_ablation) {
     const block = section(root, "Retrieval ablation"), ablation = data.retrieval_ablation;
-    block.append(node("p", `Tune questions: ${value(ablation.n_tune)} · Held-out questions: ${value(ablation.n_test)}`));
+    const note = node("p", `Tune questions: ${value(ablation.n_tune)} · Held-out questions: ${value(ablation.n_test)}`);
+    note.className = "eval-note"; block.append(note);
     table(block, "Tune and held-out comparison", ["Configuration", "Tune recall@5", "Tune MRR", "Held-out recall@5", "Held-out MRR", "Keyword weight", "Prefix"],
       Object.entries(ablation).filter(([, item]) => item && typeof item === "object").map(([name, item]) => ({
         cells: [name.replaceAll("_", " "), percent(item["recall@5"]), decimal(item.mrr), percent(item["held_out_recall@5"]),
