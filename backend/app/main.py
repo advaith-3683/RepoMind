@@ -98,12 +98,19 @@ def public_config():
     }
 
 
+EVALS_DIR = Path(__file__).parent / "evals"
+
+
 @app.get("/evals/latest")
 def latest_eval():
-    results = sorted((Path(__file__).parent / "evals" / "results").glob("*.json"))
-    if not results:
+    """Newest local run if one exists (development); otherwise the curated, committed result in
+    evals/published/latest.json (what a deployed instance serves, since evals/results/ is gitignored)."""
+    results = sorted((EVALS_DIR / "results").glob("*.json"))
+    published = EVALS_DIR / "published" / "latest.json"
+    src = results[-1] if results else published if published.exists() else None
+    if src is None:
         raise GuardrailViolation("not_found", "No eval results yet. Run: python -m app.evals.run")
-    return json.loads(results[-1].read_text())
+    return json.loads(src.read_text())
 
 
 # ---------------- repos ----------------

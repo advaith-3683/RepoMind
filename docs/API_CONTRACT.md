@@ -108,7 +108,7 @@ Body `{ "query_id":"uuid", "rating": 1 | -1, "correction": "optional string <=20
 ### `GET /traces/{query_id}` → `200`
 `{ query_id, question, answer, query_status, steps:[<all SSE events>], guardrail_events:[...], tokens_in, tokens_out, latency_ms, cost_usd }`
 
-### `GET /evals/latest` → `200` latest eval result JSON (`redteam`, `retrieval`, `agent` sections, any may be absent) or `404 not_found`.
+### `GET /evals/latest` → `200` latest eval result JSON (`redteam`, `retrieval`, `agent` sections, any may be absent) or `404 not_found`. No auth. A deployed instance serves the curated, committed `backend/app/evals/published/latest.json` (a newer local run in `evals/results/` takes precedence in development). That file also carries `meta` (repo, model, `fast_top_k`, limits), `retrieval_ablation`, `history` (one entry per eval run, including the invalid one, with `valid: false`) and `diagnostics`; `agent.rows` has no answer text. Treat every key except `redteam`/`retrieval`/`agent` as optional.
 
 ## Rate limiting
 20 requests/minute per signed-in user (per IP when auth is off) on mutating endpoints (`/repos` POST, `/ask`, decision, feedback). On `429`, show the message and disable the submit button for ~10s.

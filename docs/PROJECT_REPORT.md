@@ -185,6 +185,7 @@ backend" in FRONTEND_BRIEF.md instead of guessing.
 - **PR flow only for writable repos.** Others get `github_no_permission`; use the issue kind. Fork flow not built.
 - **Injection regex has false positives/negatives.** A user asking *about* the phrase "ignore previous instructions" gets blocked; novel phrasings can slip through. It is one layer among several (delimiting, neutralizing, tool sandbox, citation check), not the only defence. Don't claim it is complete; report the red-team numbers honestly and keep growing the set.
 - **Groundedness is a heuristic** (identifier overlap), not a faithfulness judge. Say so in interviews; the LLM-judge upgrade is listed in Next steps.
+- **Eval config.** Results apply to `FAST_TOP_K=5`; the deployed app must use the same value (an earlier Render setting of 3 is not what was measured).
 - **Evidence granularity.** Search results only count as evidence for the lines actually shown to the model (first `SEARCH_PREVIEW_LINES` = 30 lines of a chunk; chunks can be up to 120 lines).
 - **Python-only precision.** AST chunking is exact for Python; JS/TS/Go/Rust are heuristic; Java/C/C++ fall back to windows.
 - **Tests don't cover** anything needing Gemini or Postgres (see section 8).

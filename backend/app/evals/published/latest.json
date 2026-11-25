@@ -1,0 +1,388 @@
+{
+  "timestamp": "2026-11-25T03:12:17.255687+00:00",
+  "meta": {
+    "title": "Run 4: vector retrieval, fast mode",
+    "repo": "advaith-3683/smartspendAI",
+    "golden_set": {
+      "questions": 32,
+      "answerable": 27,
+      "should_decline": 5
+    },
+    "model": "primary:openai/gpt-oss-120b",
+    "mode": "fast",
+    "fast_top_k": 5,
+    "search_preview_lines": 30,
+    "retrieval_mode": "vector",
+    "branch_merged": "citation-robustness (PR #1)",
+    "runs_per_configuration": 1,
+    "limits": [
+      "One repository and one run per configuration; differences of a few questions are noise.",
+      "Groundedness is a keyword-overlap proxy, not a fact check.",
+      "Cost shows $0 because model prices are not configured (free-tier models).",
+      "Run 4 bundles three changes (citation normalisation, prompt wording, absence rules)."
+    ]
+  },
+  "redteam": {
+    "attacks_total": 12,
+    "attacks_blocked": 12,
+    "block_rate": 1.0,
+    "benign_total": 8,
+    "false_positives": 0,
+    "missed": [],
+    "false_positive_prompts": []
+  },
+  "retrieval": {
+    "vector": {
+      "recall@1": 0.7037037037037037,
+      "recall@3": 0.9259259259259259,
+      "recall@5": 0.9629629629629629,
+      "mrr": 0.8611111111111112
+    },
+    "keyword": {
+      "recall@1": 0.09259259259259259,
+      "recall@3": 0.3148148148148148,
+      "recall@5": 0.37037037037037035,
+      "mrr": 0.254320987654321
+    },
+    "hybrid": {
+      "recall@1": 0.5185185185185185,
+      "recall@3": 0.7037037037037037,
+      "recall@5": 0.8333333333333334,
+      "mrr": 0.6802469135802469
+    }
+  },
+  "retrieval_ablation": {
+    "n_tune": 14,
+    "n_test": 13,
+    "vector_only": {
+      "recall@5": 0.96,
+      "mrr": 0.87,
+      "held_out_recall@5": 0.92,
+      "held_out_mrr": 0.83
+    },
+    "hybrid_equal_weight": {
+      "recall@5": 0.83,
+      "mrr": 0.7,
+      "held_out_recall@5": 0.73,
+      "held_out_mrr": 0.63
+    },
+    "hybrid_best_on_tune": {
+      "recall@5": 0.96,
+      "mrr": 0.83,
+      "held_out_recall@5": 0.92,
+      "held_out_mrr": 0.75,
+      "kw_weight": 0.1,
+      "prefix": true
+    }
+  },
+  "agent": {
+    "mode": "fast",
+    "n": 32,
+    "n_answerable": 27,
+    "n_should_decline": 5,
+    "answer_rate": 0.8518518518518519,
+    "file_recall": 0.7962962962962963,
+    "keyword_hit": 0.7962962962962963,
+    "groundedness": 1.0,
+    "decline_accuracy": 1.0,
+    "error_rate": 0.0,
+    "n_errors": 0,
+    "models": [
+      "primary:openai/gpt-oss-120b"
+    ],
+    "answer_rate_ex_errors": 0.8518518518518519,
+    "decline_accuracy_ex_errors": 1.0,
+    "latency_p50_ms": 8519,
+    "latency_p95_ms": 15992,
+    "avg_cost_usd": 0.0,
+    "avg_tokens": 2599.84375,
+    "aborted": false,
+    "n_planned": 32,
+    "rows": [
+      {
+        "id": "q01",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 10219
+      },
+      {
+        "id": "q02",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8346
+      },
+      {
+        "id": "q03",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8131
+      },
+      {
+        "id": "q04",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 9060
+      },
+      {
+        "id": "q05",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8519
+      },
+      {
+        "id": "q06",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 9392
+      },
+      {
+        "id": "q07",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 9074
+      },
+      {
+        "id": "q08",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8210
+      },
+      {
+        "id": "q09",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8802
+      },
+      {
+        "id": "q10",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8022
+      },
+      {
+        "id": "q11",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 7872
+      },
+      {
+        "id": "q12",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8281
+      },
+      {
+        "id": "q13",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8589
+      },
+      {
+        "id": "q14",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8545
+      },
+      {
+        "id": "q15",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 9004
+      },
+      {
+        "id": "q16",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 7619
+      },
+      {
+        "id": "q17",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 20044
+      },
+      {
+        "id": "q18",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8523
+      },
+      {
+        "id": "q19",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 7843
+      },
+      {
+        "id": "q20",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 7851
+      },
+      {
+        "id": "q21",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8169
+      },
+      {
+        "id": "q22",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 8668
+      },
+      {
+        "id": "q23",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 10079
+      },
+      {
+        "id": "q24",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 15992
+      },
+      {
+        "id": "q25",
+        "status": "completed",
+        "found": true,
+        "clarify": null,
+        "latency_ms": 24415
+      },
+      {
+        "id": "q26",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8431
+      },
+      {
+        "id": "q27",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8177
+      },
+      {
+        "id": "d1",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8462
+      },
+      {
+        "id": "d2",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8433
+      },
+      {
+        "id": "d3",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8670
+      },
+      {
+        "id": "d4",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8492
+      },
+      {
+        "id": "d5",
+        "status": "completed",
+        "found": false,
+        "clarify": null,
+        "latency_ms": 8384
+      }
+    ]
+  },
+  "history": [
+    {
+      "run": 1,
+      "date": "2026-11-23",
+      "change": "hybrid retrieval, equal weights",
+      "answered": "23/27",
+      "declined": "5/5",
+      "errors": 0,
+      "file_recall": 0.7,
+      "keyword_hit": 0.72,
+      "valid": true
+    },
+    {
+      "run": 2,
+      "date": "2026-11-23",
+      "change": "vector default",
+      "answered": null,
+      "declined": null,
+      "errors": 7,
+      "file_recall": null,
+      "keyword_hit": null,
+      "valid": false,
+      "note": "7 rate-limit errors (Groq daily token cap); not comparable"
+    },
+    {
+      "run": 3,
+      "date": "2026-11-24",
+      "change": "vector default, 30 preview lines",
+      "answered": "18/27",
+      "declined": "5/5",
+      "errors": 0,
+      "file_recall": 0.61,
+      "keyword_hit": 0.65,
+      "valid": true,
+      "note": "5 answers rejected for missing or look-alike citation formatting"
+    },
+    {
+      "run": 4,
+      "date": "2026-11-25",
+      "change": "citation normalisation, stronger citation prompt, absence rules",
+      "answered": "23/27",
+      "declined": "5/5",
+      "errors": 0,
+      "file_recall": 0.8,
+      "keyword_hit": 0.8,
+      "valid": true
+    }
+  ],
+  "diagnostics": {
+    "preview_lines_60": {
+      "questions": [
+        "q05",
+        "q10",
+        "q26",
+        "q27"
+      ],
+      "answered": "4/4",
+      "note": "All four said not-found at 30 lines. 4 questions picked because they failed; a full 32-question run at 60 lines is still pending."
+    }
+  }
+}

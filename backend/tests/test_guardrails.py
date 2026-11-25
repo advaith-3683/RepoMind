@@ -1,3 +1,4 @@
+import sys
 import json
 from pathlib import Path
 
@@ -54,6 +55,7 @@ def test_sandbox_allows_normal_and_blocks_escape(repo):
             resolve_in_repo(repo, bad)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="creating symlinks needs elevated rights on Windows")
 def test_sandbox_blocks_symlink_escape(repo, tmp_path):
     secret = tmp_path / "secret.txt"
     secret.write_text("top secret")
