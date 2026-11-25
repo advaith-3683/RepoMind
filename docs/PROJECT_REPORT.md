@@ -185,16 +185,17 @@ backend" in FRONTEND_BRIEF.md instead of guessing.
 - **PR flow only for writable repos.** Others get `github_no_permission`; use the issue kind. Fork flow not built.
 - **Injection regex has false positives/negatives.** A user asking *about* the phrase "ignore previous instructions" gets blocked; novel phrasings can slip through. It is one layer among several (delimiting, neutralizing, tool sandbox, citation check), not the only defence. Don't claim it is complete; report the red-team numbers honestly and keep growing the set.
 - **Groundedness is a heuristic** (identifier overlap), not a faithfulness judge. Say so in interviews; the LLM-judge upgrade is listed in Next steps.
-- **Evidence granularity.** Search results only count as evidence for the lines actually shown to the model (first 40 lines of a chunk).
+- **Evidence granularity.** Search results only count as evidence for the lines actually shown to the model (first `SEARCH_PREVIEW_LINES` = 30 lines of a chunk; chunks can be up to 120 lines).
 - **Python-only precision.** AST chunking is exact for Python; JS/TS/Go/Rust are heuristic; Java/C/C++ fall back to windows.
 - **Tests don't cover** anything needing Gemini or Postgres (see section 8).
 
 ## 12. Resume framing (fill in X/Y only after measuring; never invent numbers)
 > **RepoMind** · Agentic RAG codebase assistant · FastAPI, Supabase (pgvector), Gemini, vanilla JS
-> - Built a retrieval layer (pgvector + Postgres full-text with weighted reciprocal-rank fusion) and chose the default by ablation on a tune/held-out split of a **N**-question golden set: vector-only matched the best hybrid on held-out recall@5 (**0.92**), so I shipped the simpler option. *(Replace with end-to-end numbers only from a valid run; never claim hybrid beat vector.)*
+> - Built a retrieval layer (pgvector + Postgres full-text with weighted reciprocal-rank fusion) and chose the default by ablation on a tune/held-out split of a 32-question golden set (27 answerable, 5 should-decline) on one repo: vector-only matched the best hybrid on held-out recall@5 (0.92), so I shipped the simpler option
+> - Debugged a drop in answered questions (85% → 67%) to answers rejected for non-ASCII bracket/hyphen citation formatting and missing citations, fixed by normalising citation characters and tightening the prompt; the next full run answered 85% (23/27) with 5/5 out-of-scope questions declined and 0 errors, one model, one repo, single run
 > - Implemented a hand-written tool-using agent loop with sandboxed read-only tools and verified `file:line` citations (invalid citations are retried or stripped; low-evidence answers escalate to the user)
-> - Added layered guardrails (prompt-injection and indirect-injection defence, secret redaction, step/token/time budgets, rate limiting) and a human-in-the-loop approval gate for proposed patches; blocked **A/B** adversarial prompts in a red-team suite
-> - Created an automated eval harness tracking recall@k, MRR, groundedness, p50/p95 latency and cost per query; **300+** automated tests
+> - Added layered guardrails (prompt-injection and indirect-injection defence, secret redaction, step/token/time budgets, rate limiting) and a human-in-the-loop approval gate for proposed patches; blocked 12/12 adversarial prompts with 0/8 false positives in a red-team suite
+> - Created an automated eval harness tracking recall@k, MRR, groundedness, p50/p95 latency and cost per query; 300+ automated tests
 
 **Interview talking points:** why RRF instead of weighted sum of scores (different score scales); why a hand-written loop with JSON actions (testability, no vendor lock-in); how indirect prompt injection works and your layered defence; why HITL gates the side effect rather than pausing the agent; what the eval showed and what you'd improve (LLM judge, tree-sitter, reranker model); the Render ephemeral-disk trade-off.
 

@@ -67,3 +67,22 @@ the provider limit, not answer quality. Cause: that day's testing used ~247K Gro
 free fallback (a different model, `google/gemma-4-31b-it:free`) was also rate-limited and ignored the citation format. On the 23 questions
 that did not error, 20 were answered versus 19 in run 1, which is within noise. A valid vector-default end-to-end run is still to be done:
 one full fast-mode run on a fresh quota day, no fallback key, `limit 3` first.
+
+## Run history (same golden set, same model `openai/gpt-oss-120b`, fast mode)
+| Run | Code | Answered (of 27) | Declined (of 5) | Errors | File recall | Keyword hit |
+|---|---|---|---|---|---|---|
+| 1, 2026-11-23 | hybrid retrieval, equal weights | 23 (85%) | 5 | 0 | 0.70 | 0.72 |
+| 2, 2026-11-23 | vector default | invalid, 7 rate-limit errors | | | | |
+| 3, 2026-11-24 | vector default, 30 preview lines | 18 (67%) | 5 | 0 | 0.61 | 0.65 |
+| 4, 2026-11-25 | + citation normalisation, stronger citation prompt, absence rules | 23 (85%) | 5 | 0 | 0.80 | 0.80 |
+
+What run 3 → run 4 shows: in run 3, 5 questions ended in `needs_clarification` (answer rejected because it had no verifiable
+`[path:start-end]` citation; the logs showed correct prose without brackets, fullwidth brackets and non-breaking hyphens). In run 4
+that count is 0 and exactly those 5 questions answer. Four failures remain, all "not found" (q05, q10, q26, q27); the vector
+top-5 contained every expected file for all four, so the cause is in the answer step, not retrieval (not yet diagnosed; a
+60-line chunk preview is one candidate). q20 is answered but cites the wrong file (vector top-5 missed `models.py`).
+
+Limits: one repo, 27 answerable questions, one run per configuration. Run 1 and run 4 both answered 23, so the 67% in run 3
+may partly be a low draw; the mechanism above (ungrounded 5 → 0) is the stronger evidence. Treat differences of a few
+questions as noise, and do not generalise beyond this repo. Run 4 bundles three changes (citation normalisation, prompt
+wording, absence rules), so the gain cannot be attributed to any one of them.
