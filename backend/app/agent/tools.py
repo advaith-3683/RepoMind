@@ -13,7 +13,6 @@ from ..retrieval.hybrid import Hit
 from .state import EvidenceStore
 
 TOOL_NAMES = ("search_code", "read_file", "find_symbol", "list_dir")
-SEARCH_PREVIEW_LINES = 30   # kept small: free LLM tiers are limited by tokens/minute
 MAX_DIR_ENTRIES = 100
 
 
@@ -70,9 +69,11 @@ class RepoTools:
         hits = self._search(query, k)
         if not hits:
             return "No results."
+        from ..config import get_settings
+        preview = max(1, get_settings().search_preview_lines)   # small by default: free LLM tiers are token-limited
         parts = []
         for h in hits:
-            lines = h.content.splitlines()[:SEARCH_PREVIEW_LINES]
+            lines = h.content.splitlines()[:preview]
             end = h.start_line + len(lines) - 1
             self.evidence.add(h.path, h.start_line, end, "\n".join(lines))
             label = f"{h.kind} {h.symbol}" if h.symbol else (h.kind or "chunk")

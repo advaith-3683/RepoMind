@@ -71,23 +71,34 @@ def _answerable(golden: dict) -> list[dict]:
     return [q for q in golden["questions"] if not q.get("should_decline")]
 
 
+def clarify_reason(message: str) -> str:
+    """Why the system asked the user to clarify: 'ungrounded' = the answer could not be tied to retrieved code
+    (citation check failed), 'budget' = ran out of step/token/time budget. Diagnostic only."""
+    m = message.lower()
+    return "ungrounded" if "couldn't ground" in m else "budget" if "ran out of budget" in m else "other"
+
+
 def _ask_once(repo: dict, q: dict, mode: str) -> dict:
     from ..service import stream_answer
 
     t0 = time.monotonic()
     row = {"id": q["id"], "answer": "", "cited": [], "found": None, "groundedness": 0.0,
-           "status": None, "error": None, "usage": {}}
+           "status": None, "error": None, "error_detail": None, "clarify": None, "models": [], "usage": {}}
     try:
         for ev in stream_answer(repo, q["question"], mode):
             if ev["type"] == "answer":
                 row.update(answer=ev["text"], cited=[c["path"] for c in ev.get("citations", [])],
                            found=ev.get("found", True), groundedness=ev.get("groundedness", 0.0))
+            elif ev["type"] == "needs_clarification":
+                row["clarify"] = clarify_reason(ev.get("message", ""))
             elif ev["type"] == "error":
                 row["error"] = ev.get("code")
+                row["error_detail"] = (ev.get("detail") or "")[:160] or None
             elif ev["type"] == "done":
-                row.update(status=ev.get("status"), usage=ev.get("usage", {}))
+                row.update(status=ev.get("status"), usage=ev.get("usage", {}), models=ev.get("usage", {}).get("models", []))
     except Exception as e:  # noqa: BLE001  (one bad question must not kill the whole run)
         row["error"] = f"exception:{type(e).__name__}"
+        row["error_detail"] = str(e)[:160] or None
     row["latency_ms"] = row["usage"].get("latency_ms", int((time.monotonic() - t0) * 1000))
     return row
 
@@ -109,6 +120,9 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
         recalls.append(metrics.recall_at_k(r["cited"], q.get("expected_files", []), len(r["cited"]) or 1) if ok else 0.0)
         hits.append(metrics.keyword_hit_rate(r["answer"], q.get("expected_keywords", [])) if ok else 0.0)
     declined = [r for r in decl_rows if r["found"] is False or r["status"] == "needs_clarification"]
+    ok_ans = [r for r in ans_rows if not r["error"]]
+    ok_decl = [r for r in decl_rows if not r["error"]]
+    ok_declined = [r for r in ok_decl if r["found"] is False or r["status"] == "needs_clarification"]
     lat = [r["latency_ms"] for r in rows]
     cost = [r["usage"].get("cost_usd", 0.0) for r in rows]
     toks = [r["usage"].get("tokens_in", 0) + r["usage"].get("tokens_out", 0) for r in rows]
@@ -123,12 +137,17 @@ def summarize_agent_rows(rows: list[dict], questions: list[dict], mode: str = "a
         "groundedness": metrics.mean([r["groundedness"] for r in ans_rows if answered(r)]),
         "decline_accuracy": (len(declined) / len(decl_rows)) if decl_rows else None,
         "error_rate": metrics.mean([1.0 if r["error"] else 0.0 for r in rows]),
+        "n_errors": sum(1 for r in rows if r["error"]),
+        "models": sorted({m for r in rows for m in r.get("models", [])}),
+        # Same metrics over questions that did NOT error (diagnostic only; the headline numbers above stay strict).
+        "answer_rate_ex_errors": metrics.mean([1.0 if answered(r) else 0.0 for r in ok_ans]) if ok_ans else None,
+        "decline_accuracy_ex_errors": (len(ok_declined) / len(ok_decl)) if ok_decl else None,
         "latency_p50_ms": metrics.percentile(lat, 50),
         "latency_p95_ms": metrics.percentile(lat, 95),
         "avg_cost_usd": metrics.mean(cost),
         "avg_tokens": metrics.mean(toks),
         "rows": [{"id": r["id"], "status": r["status"], "found": r["found"], "error": r["error"],
-                  "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
+                  "error_detail": r.get("error_detail"), "clarify": r.get("clarify"), "models": r.get("models", []), "cited": r["cited"], "latency_ms": r["latency_ms"], "retried": r.get("retried", False)}
                  for r in rows],
     }
 
@@ -152,6 +171,16 @@ def pick_best(variants: list[dict]) -> dict:
 
 
 SWEEP_WEIGHTS = (0.0, 0.1, 0.25, 0.5, 1.0)
+
+
+def vector_diagnostics(questions: list[dict], vec_hits: dict[str, list[str]], k: int) -> dict:
+    """Per answerable question: which expected files are missing from the vector top-k. Lets a failed end-to-end
+    question be classified as 'retrieval missed it' vs 'the model/citation step failed'. Pure; unit-tested."""
+    out = {}
+    for q in questions:
+        top = vec_hits[q["id"]][:k]
+        out[q["id"]] = {"missing": [f for f in q["expected_files"] if f not in top], "top": top}
+    return out
 
 
 def run_retrieval_sweep(golden: dict) -> dict:
@@ -185,8 +214,9 @@ def run_retrieval_sweep(golden: dict) -> dict:
         for w in SWEEP_WEIGHTS:
             r = evaluate(lambda q, w=w, prefix=prefix: fuse(cand[q["id"]][0], cand[q["id"]][2 if prefix else 1], q["question"], w))
             variants.append({"kw_weight": w, "prefix": prefix, **r})
+    diag = vector_diagnostics(qs, {qid: [h.path for h in c[0]] for qid, c in cand.items()}, s.fast_top_k)
     return {"n_tune": len(tune_q), "n_test": len(test_q), "vector_baseline": baseline,
-            "variants": variants, "selected": pick_best(variants)}
+            "variants": variants, "selected": pick_best(variants), "vector_by_question": diag, "k": s.fast_top_k}
 
 
 def sweep_markdown(sw: dict) -> str:
@@ -200,27 +230,59 @@ def sweep_markdown(sw: dict) -> str:
     for v in sw["variants"]:
         mark = " **<- selected on tune set**" if v is sel else ""
         lines.append(row(f"hybrid kw_weight={v['kw_weight']} prefix={'on' if v['prefix'] else 'off'}{mark}", v))
+    diag = sw.get("vector_by_question")
+    if diag is not None:
+        bad = {qid: d["missing"] for qid, d in diag.items() if d["missing"]}
+        lines += ["", f"Vector top-{sw.get('k', 5)}: {len(diag) - len(bad)}/{len(diag)} questions have every expected file retrieved."]
+        lines += [f"- {qid}: missing {', '.join(m)}" for qid, m in bad.items()]
     return "\n".join(lines) + "\n"
+
+
+MAX_RATE_LIMIT_RETRIES = 2
+EARLY_STOP_AFTER = 3   # consecutive questions that still hit a rate limit after all retries => quota is gone, abort
 
 
 def run_agent_eval(golden: dict, mode: str = "agent", sleep_s: float = 0.0, limit: int | None = None) -> dict:
     """sleep_s paces questions (free-tier LLM limits are per minute). A provider rate-limit error is
-    retried once after the minute window; it is still reported in error_rate/retried if it persists."""
+    retried (up to MAX_RATE_LIMIT_RETRIES times) after the minute window; it is still reported in
+    error_rate/retried if it persists."""
     from .. import store
 
     repo = store.get_repo(golden["repo_id"])
     questions = golden["questions"][:limit] if limit else golden["questions"]
-    rows = []
+    rows, streak, aborted = [], 0, False
     for i, q in enumerate(questions):
         if i and sleep_s:
             time.sleep(sleep_s)
         row = _ask_once(repo, q, mode)
-        if row["error"] == "rate_limited":
+        retried = False
+        for _ in range(MAX_RATE_LIMIT_RETRIES):
+            if row["error"] != "rate_limited":
+                break
             time.sleep(max(sleep_s, 65))
             row = _ask_once(repo, q, mode)
+            retried = True
+        if retried:
             row["retried"] = True
         rows.append(row)
-    return summarize_agent_rows(rows, questions, mode)
+        streak = streak + 1 if row["error"] == "rate_limited" else 0
+        if streak >= EARLY_STOP_AFTER and i < len(questions) - 1:
+            aborted = True   # more attempts only burn quota and produce a meaningless result
+            break
+    summary = summarize_agent_rows(rows, questions[:len(rows)], mode)
+    summary["aborted"], summary["n_planned"] = aborted, len(questions)
+    return summary
+
+
+def select_questions(questions: list[dict], only: str | None) -> list[dict]:
+    """--only q05,q10: run just those ids (diagnostics). Unknown ids are an error, never silently ignored."""
+    if not only:
+        return questions
+    want = [x.strip() for x in only.split(",") if x.strip()]
+    known = {q["id"] for q in questions}
+    if unknown := [w for w in want if w not in known]:
+        raise SystemExit(f"--only: unknown question ids {unknown}")
+    return [q for q in questions if q["id"] in set(want)]
 
 
 def resolve_repo_id(golden: dict, repo_url: str | None = None) -> str:
@@ -266,9 +328,25 @@ def to_markdown(results: dict) -> str:
                   f"| answer rate | {a['answer_rate']:.0%} |", f"| file recall | {a['file_recall']:.2f} |",
                   f"| keyword hit | {a['keyword_hit']:.2f} |", f"| groundedness | {a['groundedness']:.2f} |",
                   "| correctly declined | " + ("n/a" if a["decline_accuracy"] is None else f"{a['decline_accuracy']:.0%}") + " |",
-                  f"| error rate | {a['error_rate']:.0%} |",
+                  f"| error rate | {a['error_rate']:.0%} ({a.get('n_errors', 0)} errored) |",
                   f"| latency p50 / p95 | {a['latency_p50_ms']:.0f} / {a['latency_p95_ms']:.0f} ms |",
                   f"| avg cost / query | ${a['avg_cost_usd']:.4f} |", ""]
+        if a.get("aborted"):
+            lines += [f"> **Run aborted after {a['n']} of {a['n_planned']} questions: {EARLY_STOP_AFTER} in a row hit the "
+                      "provider rate limit even after retries.** The numbers cover only the questions that ran. "
+                      "Not a valid result; wait for the quota to reset.", ""]
+        if len(a.get("models", [])) > 1:
+            lines += ["> **Warning: answers came from more than one model (" + ", ".join(a["models"]) + ").** "
+                      "Do not report this as a single-model result.", ""]
+        elif a.get("models"):
+            lines += [f"Model: `{a['models'][0]}`", ""]
+        if a.get("n_errors"):
+            ex, dx = a.get("answer_rate_ex_errors"), a.get("decline_accuracy_ex_errors")
+            lines += [f"> **Warning: {a['n_errors']} of {a['n']} questions errored (e.g. provider rate limits).** "
+                      "The headline numbers count those as failures, so they measure the provider limit, not answer quality. "
+                      "Do not compare this run with another. Excluding errored questions: answer rate "
+                      + ("n/a" if ex is None else f"{ex:.0%}") + ", declined "
+                      + ("n/a" if dx is None else f"{dx:.0%}") + ". Re-run after the quota resets.", ""]
     return "\n".join(lines)
 
 
@@ -282,6 +360,7 @@ def main() -> None:
     ap.add_argument("--mode", choices=["fast", "agent"], default="agent", help="answer mode for --agent runs")
     ap.add_argument("--sleep", type=float, default=0.0, help="seconds between questions (free-tier LLM limits)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions (smoke test)")
+    ap.add_argument("--only", default=None, help="comma-separated question ids to run (diagnostics; not a valid headline run)")
     ap.add_argument("--repo-url", default=None, help="look up the indexed repo by URL instead of repo_id in the golden file")
     args = ap.parse_args()
     if not (args.redteam or args.retrieval or args.agent or args.sweep):
@@ -291,6 +370,7 @@ def main() -> None:
     golden = json.loads(Path(args.golden).read_text()) if (args.retrieval or args.agent or args.sweep) else None
     if golden is not None:
         golden["repo_id"] = resolve_repo_id(golden, args.repo_url)
+        golden["questions"] = select_questions(golden["questions"], args.only)
         if args.limit:
             golden["questions"] = golden["questions"][: args.limit]
     if args.redteam:

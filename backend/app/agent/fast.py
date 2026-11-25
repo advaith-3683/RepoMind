@@ -12,9 +12,11 @@ from .tools import RepoTools
 
 
 def run_fast(question: str, tools: RepoTools, llm: LLM, budget: Budget, k: int = 5) -> Iterator[dict]:
+    from ..config import get_settings
+    mode = get_settings().retrieval_mode
     obs = tools.search_code(question, k)
     yield from tools.guardrail_events          # e.g. indirect-injection lines neutralized during retrieval
-    yield {"type": "step", "index": 1, "thought": "Fast mode: single hybrid retrieval.",
+    yield {"type": "step", "index": 1, "thought": f"Fast mode: single {mode} retrieval.",
            "tool": "search_code", "args": {"query": question, "k": k},
            "observation_preview": obs[:OBS_PREVIEW_CHARS], "tokens_total": 0}
 

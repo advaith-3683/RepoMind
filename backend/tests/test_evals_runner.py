@@ -104,3 +104,127 @@ def test_golden_file_is_well_formed():
             assert q["expected_files"] and q["expected_keywords"]
     assert sum(1 for q in qs if q.get("should_decline")) >= 3
     assert [q["id"] for q in ev._answerable(g)] == [q["id"] for q in qs if not q.get("should_decline")]
+
+
+def test_error_detail_is_recorded_and_truncated(monkeypatch):
+    def fake_stream(repo, question, mode):
+        yield {"type": "error", "code": "rate_limited", "message": "m", "detail": "x" * 500}
+        yield {"type": "done", "status": "error", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", fake_stream)
+    r = ev._ask_once({"id": "r"}, QS[0], "fast")
+    assert r["error"] == "rate_limited" and len(r["error_detail"]) == 160
+
+
+def test_rate_limit_retries_up_to_twice_then_gives_up(monkeypatch):
+    sleeps, calls = [], {"n": 0}
+    monkeypatch.setattr(ev.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(store, "get_repo", lambda rid: {"id": rid})
+
+    def always_limited(repo, question, mode):
+        calls["n"] += 1
+        yield {"type": "error", "code": "rate_limited", "message": "m"}
+        yield {"type": "done", "status": "error", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", always_limited)
+    out = ev.run_agent_eval({"repo_id": "r", "questions": QS[:1]}, "fast")
+    assert calls["n"] == 3 and sleeps.count(65) == 2
+    assert out["rows"][0]["error"] == "rate_limited" and out["rows"][0]["retried"] is True
+
+
+def test_ex_errors_metrics_and_warning():
+    rows = [row("a", "alpha", ["f1.py"]),
+            row("b", "", status="error", error="rate_limited", found=None),
+            row("d1", "", status="error", error="rate_limited", found=None),
+            row("d2", "none", found=False)]
+    s = ev.summarize_agent_rows(rows, QS, "fast")
+    assert s["n_errors"] == 2
+    assert s["answer_rate"] == pytest.approx(1 / 2) and s["answer_rate_ex_errors"] == 1.0
+    assert s["decline_accuracy"] == 0.5 and s["decline_accuracy_ex_errors"] == 1.0
+    assert "Warning: 2 of 4" in ev.to_markdown({"agent": s})
+    clean = ev.summarize_agent_rows([row("a", "alpha", ["f1.py"])], QS[:1])
+    assert "Warning" not in ev.to_markdown({"agent": clean})
+
+
+def test_models_recorded_and_mixed_models_warn(monkeypatch):
+    def fake_stream(repo, question, mode):
+        m = "primary:gpt-oss" if question == "p" else "fallback:gemma"
+        yield {"type": "answer", "text": "alpha", "citations": [{"path": "f1.py"}], "found": True, "groundedness": 0.9}
+        yield {"type": "done", "status": "completed", "usage": {"latency_ms": 5, "models": [m]}}
+
+    monkeypatch.setattr(service, "stream_answer", fake_stream)
+    qa, qb = {**QS[0], "question": "p"}, {**QS[1], "question": "f"}
+    one = ev.summarize_agent_rows([ev._ask_once({}, qa, "fast")], [qa], "fast")
+    assert one["models"] == ["primary:gpt-oss"] and "Model: `primary:gpt-oss`" in ev.to_markdown({"agent": one})
+    both = ev.summarize_agent_rows([ev._ask_once({}, qa, "fast"), ev._ask_once({}, qb, "fast")], [qa, qb], "fast")
+    assert len(both["models"]) == 2 and "more than one model" in ev.to_markdown({"agent": both})
+    assert both["rows"][1]["models"] == ["fallback:gemma"]
+
+
+def test_early_stop_after_three_consecutive_rate_limits(monkeypatch):
+    calls = {"n": 0}
+    monkeypatch.setattr(ev.time, "sleep", lambda s: None)
+    monkeypatch.setattr(store, "get_repo", lambda rid: {"id": rid})
+
+    def limited(repo, question, mode):
+        calls["n"] += 1
+        yield {"type": "error", "code": "rate_limited", "message": "m"}
+        yield {"type": "done", "status": "error", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", limited)
+    out = ev.run_agent_eval({"repo_id": "r", "questions": QS}, "fast")   # 5 questions planned
+    assert out["n"] == 3 and out["aborted"] is True and out["n_planned"] == 5
+    assert calls["n"] == 3 * (1 + ev.MAX_RATE_LIMIT_RETRIES)
+    assert "Run aborted after 3 of 5" in ev.to_markdown({"agent": out})
+
+
+def test_early_stop_streak_resets_on_success(monkeypatch):
+    monkeypatch.setattr(ev.time, "sleep", lambda s: None)
+    monkeypatch.setattr(store, "get_repo", lambda rid: {"id": rid})
+
+    def mixed(repo, question, mode):
+        yield {"type": "error", "code": "rate_limited", "message": "m"} if question.startswith("L") else {
+            "type": "answer", "text": "a", "citations": [], "found": True, "groundedness": 1.0}
+        yield {"type": "done", "status": "error" if question.startswith("L") else "completed", "usage": {}}
+
+    monkeypatch.setattr(service, "stream_answer", mixed)
+    qs = [{**QS[0], "id": f"x{i}", "question": ("L" if i in (0, 1, 3, 4) else "ok")} for i in range(6)]   # L,L,ok,L,L,ok: streak never reaches 3
+    out = ev.run_agent_eval({"repo_id": "r", "questions": qs}, "fast")
+    assert out["n"] == 6 and out["aborted"] is False
+
+
+def test_clarify_reason_is_recorded():
+    assert ev.clarify_reason("I couldn't ground an answer in the code I retrieved. Can you...") == "ungrounded"
+    assert ev.clarify_reason("I ran out of budget before I could find...") == "budget"
+    assert ev.clarify_reason("something else") == "other"
+
+    def fake_stream(repo, question, mode):
+        yield {"type": "needs_clarification", "message": "I couldn't ground an answer in the code I retrieved."}
+        yield {"type": "done", "status": "needs_clarification", "usage": {}}
+
+    import app.service as svc
+    orig = svc.stream_answer
+    svc.stream_answer = fake_stream
+    try:
+        r = ev._ask_once({}, QS[0], "fast")
+    finally:
+        svc.stream_answer = orig
+    assert r["clarify"] == "ungrounded" and r["status"] == "needs_clarification"
+    assert ev.summarize_agent_rows([r], QS[:1])["rows"][0]["clarify"] == "ungrounded"
+
+
+def test_vector_diagnostics_and_markdown():
+    qs = [{"id": "a", "expected_files": ["x.py", "y.py"]}, {"id": "b", "expected_files": ["z.py"]}]
+    d = ev.vector_diagnostics(qs, {"a": ["x.py", "q.py", "y.py"], "b": ["m.py", "n.py"]}, 2)
+    assert d["a"]["missing"] == ["y.py"] and d["b"]["missing"] == ["z.py"]     # y.py is outside the top 2
+    z = {"tune": {"recall@5": 1, "mrr": 1}, "test": {"recall@5": 1, "mrr": 1}, "all": {"recall@5": 1, "mrr": 1}}
+    sw = {"n_tune": 1, "n_test": 1, "vector_baseline": z, "variants": [], "selected": None, "vector_by_question": d, "k": 2}
+    md = ev.sweep_markdown(sw)
+    assert "0/2 questions have every expected file" in md and "- a: missing y.py" in md
+
+
+def test_select_questions_only():
+    assert [q["id"] for q in ev.select_questions(QS, "b, d1")] == ["b", "d1"]
+    assert ev.select_questions(QS, None) is QS
+    with pytest.raises(SystemExit):
+        ev.select_questions(QS, "b,nope")
