@@ -5,9 +5,9 @@
   const checks = [], errors = [];
   const assert = (value, message) => { if (!value) throw Error(message); };
   const payload = {
-    meta: { title: "Fixture evaluation", model: "fixture-model", repo: "fixture/repo", fast_top_k: 5, search_preview_lines: 60,
+    meta: { title: "Fixture evaluation", model: "primary:fixture-model", repo: "fixture/repo", fast_top_k: 5, search_preview_lines: 60,
       golden_set: { questions: 32, answerable: 27, should_decline: 5 }, limits: ["One repository and one run.", "Groundedness is a proxy."] },
-    agent: { n_errors: 0, answer_rate: .9259, decline_accuracy: 1, groundedness: 1, error_rate: 0, file_recall: .85, keyword_hit: .87,
+    agent: { models: ["primary:fixture-model", "primary:provider/second-model"], n_errors: 0, answer_rate: .9259, decline_accuracy: 1, groundedness: 1, error_rate: 0, file_recall: .85, keyword_hit: .87,
       latency_p50_ms: 8912, latency_p95_ms: 10736, avg_tokens: 2836.78 },
     history: [{ run: 1, valid: false, answered: null, note: "Provider quota exhausted." }, { run: 2, answered: "25/27", declined: "5/5" }],
     redteam: { attacks_blocked: 12, attacks_total: 12, false_positives: 0, benign_total: 8 },
@@ -56,6 +56,25 @@
         assert(await button.getAttribute("aria-pressed") === String(theme === "dark"), "Wrong initial pressed state");
         assert(await tab.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Overflow at ${width}/${theme}/${path}`);
         assert(await button.locator("svg").count() === 1, "Missing SVG icon");
+        if (path === "/evaluations") {
+          assert((await tab.locator(".eval-meta dt").allTextContents()).join(",") === "Repository,Model,Fast top K,Search preview lines", "Unexpected metadata rows");
+          assert(await tab.locator(".eval-meta dd").nth(1).textContent() === "fixture-model, provider/second-model", "Models not formatted consistently");
+        }
+        if (path === "/documentation") {
+          const flow = await tab.locator(".documentation-flow").evaluate((node) => {
+            const boxes = [...node.querySelectorAll("li > span")];
+            return { label: node.getAttribute("aria-label"), boxes: boxes.map((box) => {
+              const rect = box.getBoundingClientRect(), css = getComputedStyle(box);
+              return { top: rect.top, left: rect.left, radius: parseFloat(css.borderRadius), background: css.backgroundColor };
+            }) };
+          });
+          assert(flow.boxes.length === 5 && flow.boxes.every((box) => box.radius > 0), "Missing rounded flow boxes");
+          assert(flow.label.includes("answer or decline"), "Diagram text alternative missing");
+          assert(flow.boxes[0].background !== flow.boxes[4].background, "Final flow box lacks accent");
+          assert(flow.boxes.every((box, index) => index === 0 || (width >= 700
+            ? box.left > flow.boxes[index - 1].left && Math.abs(box.top - flow.boxes[0].top) < 1
+            : box.top > flow.boxes[index - 1].top && Math.abs(box.left - flow.boxes[0].left) < 1)), "Flow direction does not match viewport");
+        }
         if (path === "/evaluations" && width < 900) {
           const region = tab.getByRole("region", { name: "Retrieval results", exact: true });
           await tab.waitForFunction(() => [...document.querySelectorAll(".eval-table-scroll")].find((node) => node.getAttribute("aria-label") === "Retrieval results").parentElement.dataset.overflow === "true");

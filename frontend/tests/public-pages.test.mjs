@@ -1,7 +1,7 @@
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { renderEvaluations, initEvaluations } from "../js/ui/evaluations.js";
+import { renderEvaluations, initEvaluations, formatModels } from "../js/ui/evaluations.js";
 import { appendAnswerText, answerNotice } from "../js/ui/answer.js";
 import { configureAuthentication } from "../js/api.js";
 
@@ -42,7 +42,7 @@ beforeEach(() => {
 test("evaluations render supplied metadata and all end-to-end metrics with units", () => {
   const root = new Node("div"), data = fixture(), before = JSON.stringify(data);
   renderEvaluations(root, data);
-  for (const text of ["Fixture evaluation", "fixture/repo", "fixture-model", "Golden set size12", "Fast top K5", "Search preview lines60"]) assert.ok(root.textContent.includes(text), text);
+  for (const text of ["Fixture evaluation", "fixture/repo", "fixture-model", "Fast top K5", "Search preview lines60"]) assert.ok(root.textContent.includes(text), text);
   assert.deepEqual(rows(findTable(root, "End-to-end results")), [
     ["Answer rate", "75%"], ["Correctly declined", "100%"], ["File recall", "60%"], ["Keyword hit", "70%"],
     ["Groundedness", "80%"], ["Error rate", "0%"], ["Latency p50 (ms)", "1234"], ["Latency p95 (ms)", "4567"], ["Average tokens", "123"],
@@ -262,4 +262,31 @@ test("every evaluation table retains a labelled keyboard-focusable scroll region
   assert.equal(regions.length, tagged(root, "table").length);
   assert.ok(regions.every((node) => node.attributes.role === "region" && node.attributes["aria-label"] && node.tabIndex === 0));
   assert.ok(regions.every((node) => typeof node.listeners.scroll === "function"));
+});
+
+test("model formatting removes primary prefixes and preserves every supplied model", () => {
+  assert.equal(formatModels("primary:openai/gpt-oss-120b"), "openai/gpt-oss-120b");
+  assert.equal(formatModels("openai/gpt-oss-120b"), "openai/gpt-oss-120b");
+  const models = ["primary:openai/gpt-oss-120b", "primary:provider/second-model"];
+  assert.equal(formatModels("unused", models), "openai/gpt-oss-120b, provider/second-model");
+  assert.equal(formatModels(models), "openai/gpt-oss-120b, provider/second-model");
+  assert.deepEqual(models, ["primary:openai/gpt-oss-120b", "primary:provider/second-model"]);
+  assert.equal(formatModels("primary:provider/model", []), "provider/model");
+  assert.equal(formatModels(null, [null, ""]), "—");
+});
+
+test("metadata contains only the four required rows and both model displays share formatting", () => {
+  const root = new Node("div"), data = fixture();
+  data.meta.model = "primary:original-model";
+  data.agent.models = ["primary:provider/first", "primary:<img src=x>"];
+  const before = JSON.stringify(data);
+  renderEvaluations(root, data);
+  const metadata = flatten(root).find((node) => node.className === "eval-meta");
+  assert.deepEqual(tagged(metadata, "dt").map((node) => node.textContent), ["Repository", "Model", "Fast top K", "Search preview lines"]);
+  assert.deepEqual(tagged(metadata, "dd").map((node) => node.textContent), ["fixture/repo", "provider/first, <img src=x>", "5", "60"]);
+  assert.ok(root.textContent.includes("Model: provider/first, <img src=x> · one repository, single run"));
+  assert.ok(root.textContent.includes("9 answerable, 3 should decline"));
+  assert.ok(!root.textContent.includes("Golden set size"));
+  assert.equal(tagged(root, "img").length, 0);
+  assert.equal(JSON.stringify(data), before);
 });

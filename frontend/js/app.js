@@ -23,7 +23,7 @@ updateMobileLayout();
 const chat = initChat();
 const repositories = initRepositories({ autoLoad: false, onChange(state) {
   renderWorkspaceState(state);
-  chat.setRepository(state);
+  chat.setRepository(state, { preserveActive: ["loading", "error", "redirecting"].includes(document.documentElement.dataset.authState) });
 } });
 const auth = createAuth();
 let workspaceActive = false;
@@ -51,6 +51,7 @@ auth.subscribe(({ phase, message, login }) => {
   document.querySelectorAll("[data-user-login]").forEach((node) => { node.textContent = login; });
   document.querySelectorAll("[data-account]").forEach((node) => { node.hidden = phase === "local"; });
   router.setPhase(phase);
+  if (phase === "signed-out") chat.clear();
   if (ready && !workspaceActive) {
     workspaceActive = true;
     repositories.start();

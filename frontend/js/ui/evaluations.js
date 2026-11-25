@@ -6,6 +6,12 @@ const decimal = (item) => typeof item === "number" && Number.isFinite(item) ? it
 const whole = (item) => typeof item === "number" && Number.isFinite(item) ? item.toFixed(0) : missing;
 const percent = (item) => typeof item === "number" && Number.isFinite(item) ? `${(item * 100).toFixed(0)}%` : missing;
 
+export function formatModels(model, models) {
+  const list = Array.isArray(models) && models.some((item) => typeof item === "string" && item.trim())
+    ? models : Array.isArray(model) ? model : [model];
+  return list.filter((item) => typeof item === "string").map((item) => item.trim().replace(/^primary:/, "")).filter(Boolean).join(", ") || missing;
+}
+
 function countPair(text) {
   const match = typeof text === "string" && /^(\d+)\/(\d+)$/.exec(text);
   if (!match) return null;
@@ -28,7 +34,7 @@ function summary(root, data) {
     if ((label === "Answered" || label === "Declined") && run?.valid === false) card.append(node("p", "invalid run"));
     cards.append(card);
   }
-  root.append(cards, node("p", `Model: ${value(data.meta?.model)} · one repository, single run`));
+  root.append(cards, node("p", `Model: ${formatModels(data.meta?.model, data.agent?.models ?? data.meta?.models)} · one repository, single run`));
 }
 
 function barChart(root, title, description, entries) {
@@ -114,8 +120,8 @@ export function renderEvaluations(root, data = {}) {
     summary(header, data);
     if (meta.golden_set) header.append(node("p", `${value(meta.golden_set.answerable)} answerable, ${value(meta.golden_set.should_decline)} should decline`));
     const list = node("dl"); list.className = "eval-meta";
-    for (const [label, item] of [["Repository", meta.repo], ["Model", meta.model], ["Fast top K", meta.fast_top_k],
-      ["Search preview lines", meta.search_preview_lines], ["Golden set size", meta.golden_set?.questions]]) {
+    for (const [label, item] of [["Repository", meta.repo], ["Model", formatModels(meta.model, data.agent?.models ?? meta.models)], ["Fast top K", meta.fast_top_k],
+      ["Search preview lines", meta.search_preview_lines]]) {
       list.append(node("dt", label), node("dd", value(item)));
     }
     header.append(list);
