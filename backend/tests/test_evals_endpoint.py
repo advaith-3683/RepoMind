@@ -39,3 +39,13 @@ def test_committed_published_file_is_valid_and_honest():
     assert d["meta"]["fast_top_k"] == 5 and d["meta"]["limits"]
     assert any(h["valid"] is False for h in d["history"])          # the invalid run stays visible
     assert all("cited" not in r for r in d["agent"]["rows"])        # no per-answer data is published
+
+
+def test_published_file_matches_current_defaults():
+    from app.config import Settings
+
+    d = json.loads((main.EVALS_DIR / "published" / "latest.json").read_text())
+    s = Settings(_env_file=None)
+    assert d["meta"]["search_preview_lines"] == s.search_preview_lines == 60
+    assert d["meta"]["fast_top_k"] == s.fast_top_k == 5 and d["meta"]["retrieval_mode"] == s.retrieval_mode
+    assert d["history"][-1]["run"] == 5 and d["history"][-1]["valid"] is True

@@ -19,8 +19,8 @@ on:
         description: "Diagnostics: comma-separated question ids (e.g. q05,q10). Empty = normal run. A subset is NOT a valid headline result."
         default: ""
       preview_lines:
-        description: "Lines of each retrieved chunk shown to the model (default 30)"
-        default: "30"
+        description: "Lines of each retrieved chunk shown to the model (default 60)"
+        default: "60"
       use_fallback:
         description: "Allow the OpenRouter fallback model. Leave OFF for valid evals: it would mix two models in one result."
         type: boolean
