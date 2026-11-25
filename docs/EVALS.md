@@ -61,6 +61,12 @@ Finding: on this repo, keyword fusion did not help and equal-weight fusion hurt,
 project owner, 27 answerable questions, so differences of a few points are noise. Keyword search may still help
 identifier-style queries (the agent's `find_symbol` tool covers those); this set does not test that.
 
+## Configuration the numbers apply to
+All end-to-end results above use `FAST_TOP_K=5` (five chunks per question), `SEARCH_PREVIEW_LINES=30`, `RETRIEVAL_MODE=vector`, one
+model (`openai/gpt-oss-120b`, no fallback), `LLM_CACHE=off`. The deployed app must use the same `FAST_TOP_K=5` for these numbers to
+describe it. The curated copy of the latest valid run that the Evaluations page reads is `backend/app/evals/published/latest.json`;
+update it (and `history`) whenever a new valid full run replaces it.
+
 ## Run 2 (2026-11-23, vector default): INVALID, do not cite
 7 of 32 questions ended in `rate_limited` even after a retry (answer rate 74%, error rate 22%, declined 40%), so those numbers measure
 the provider limit, not answer quality. Cause: that day's testing used ~247K Groq tokens against a 200K/day cap, and the OpenRouter
