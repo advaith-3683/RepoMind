@@ -94,16 +94,17 @@ hr { width: 100%; height: 1px; margin: 0; border: 0; background: var(--divider);
 input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 .add-repo { align-self: flex-start; }
 .workspace { display: grid; grid-template-rows: auto 1px minmax(0, 1fr) auto; gap: 20px; padding: 32px; min-width: 0; min-height: 0; }
-.context-header { display: flex; align-items: flex-start; gap: 40px; }
-.context-header p { font-weight: 600; color: var(--primary); font-size: 13px; }
+.context-header { display: flex; align-items: baseline; gap: 24px; min-width: 0; }
+.context-header h1, .context-header .new-chat { flex-shrink: 0; }
+.context-header p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--primary); font-size: 13px; }
 .new-chat { margin-left: auto; white-space: nowrap; }
 .mobile-page-links .new-chat { padding-block: 6px; font-size: 13px; }
 .conversation { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.workspace-empty { display: flex; flex-direction: column; gap: 20px; max-width: 704px; padding: 24px; background: var(--surface); overflow-wrap: anywhere; }
+.workspace-empty { display: flex; flex-direction: column; gap: 20px; width: 100%; padding: 24px; background: var(--surface); overflow-wrap: anywhere; }
 .workspace-empty h2 { font-size: 29px; }
 .workspace-empty > .muted { font-size: 14px; line-height: 1.5; }
 [data-workspace-state="error"] { border-left: 2px solid #a23e31; }
-.composer-region { width: 100%; padding: 24px; }
+.composer-region { width: 100%; min-width: 0; }
 .composer { display: flex; flex-direction: column; gap: 16px; padding: 16px; background: var(--surface); width: 100%; }
 .composer textarea { resize: vertical; width: 100%; min-height: 18px; max-height: 20dvh; padding: 0; border: 0; background: transparent; font-size: 14px; line-height: 18px; }
 .composer-actions { display: flex; align-items: flex-start; gap: 32px; }
@@ -118,7 +119,7 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 [data-send]:disabled { opacity: .5; }
 .composer-actions { align-items: center; gap: 12px; flex-wrap: wrap; }
 .composer-actions [data-send] { margin-left: auto; }
-[data-chat-output] { display: flex; flex-direction: column; gap: 20px; min-width: 0; max-width: 704px; }
+[data-chat-output] { display: flex; flex-direction: column; gap: 20px; min-width: 0; width: 100%; }
 .chat-question { font: 25px var(--font-serif); white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer { display: flex; flex-direction: column; gap: 16px; padding: 24px; background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
 .answer-text { font-size: 17px; line-height: 1.65; white-space: pre-wrap; }
@@ -193,8 +194,7 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
 @media (min-width: 901px) and (max-width: 1200px) {
   .workspace-layout { grid-template-columns: 224px minmax(0, 1fr) 280px; }
   .workspace { padding: 24px; }
-  .context-header { gap: 16px; flex-wrap: wrap; }
-  .composer-region { padding: 24px 0; }
+  .context-header { gap: 16px; }
   .composer-actions { gap: 16px; }
   .topbar nav { width: auto; flex: 1; }
 }
@@ -358,7 +358,6 @@ input::placeholder, textarea::placeholder { opacity: 1; color: var(--muted); }
   .auth-content { gap: 16px; }
   .auth-preview { padding-block: 16px; gap: 10px; }
   .workspace { padding: 16px 24px; gap: 12px; }
-  .composer-region { padding: 8px 24px; }
 }
 
 .public-nav { display: flex; flex-wrap: wrap; gap: 12px 24px; font-size: 13px; }
