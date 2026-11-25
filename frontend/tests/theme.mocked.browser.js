@@ -59,6 +59,17 @@
         if (path === "/evaluations") {
           assert((await tab.locator(".eval-meta dt").allTextContents()).join(",") === "Repository,Model,Fast top K,Search preview lines", "Unexpected metadata rows");
           assert(await tab.locator(".eval-meta dd").nth(1).textContent() === "fixture-model, provider/second-model", "Models not formatted consistently");
+          const sizes = await tab.evaluate(() => {
+            const size = (selector) => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize);
+            return { table: size("#evaluations-page table"), caption: size("#evaluations-page caption"),
+              metadata: size(".eval-meta dd"), label: size(".eval-stat h3"), subline: size(".eval-stat > p:last-child:not(.eval-stat-value)"),
+              helper: size(".eval-chart > p"), barValue: size(".eval-bar-row strong"), body: size(".eval-limits li"), note: size(".eval-note"),
+              statValue: size(".eval-stat-value"), header: size(".public-header nav a") };
+          });
+          assert(sizes.table === 15 && sizes.metadata === 15 && sizes.caption === 14 && sizes.note === 14, "Evaluation detail text size incorrect");
+          assert(sizes.label === 14 && sizes.subline === 13 && sizes.helper === 13 && sizes.barValue === 13 && sizes.body === 16, "Evaluation summary text size incorrect");
+          assert(sizes.statValue === (width <= 600 ? 30 : 36) && sizes.header === 13, "Stat heading or public header changed");
+          assert(await tab.locator(".eval-bar-row > span:first-child, .eval-bar-row strong").evaluateAll((nodes) => nodes.every((node) => node.scrollWidth <= node.clientWidth + 1)), "Chart text no longer fits");
         }
         if (path === "/documentation") {
           const flow = await tab.locator(".documentation-flow").evaluate((node) => {
@@ -74,7 +85,23 @@
           assert(flow.boxes.every((box, index) => index === 0 || (width >= 700
             ? box.left > flow.boxes[index - 1].left && Math.abs(box.top - flow.boxes[0].top) < 1
             : box.top > flow.boxes[index - 1].top && Math.abs(box.left - flow.boxes[0].left) < 1)), "Flow direction does not match viewport");
+          const typography = await tab.evaluate(() => {
+            const css = (selector) => getComputedStyle(document.querySelector(selector));
+            const paragraph = css("#docs-overview p"), example = css(".documentation-example p:not(.eyebrow)");
+            const toc = document.querySelector(".documentation-toc");
+            return { body: paragraph.fontSize, lineHeight: paragraph.lineHeight, measure: paragraph.maxWidth,
+              example: example.fontSize, mono: example.fontFamily, contents: css(".documentation-toc a").fontSize,
+              sectionHeading: css("#docs-overview h2").fontSize, contentsHeading: css(".documentation-toc h2").fontSize,
+              tocFits: toc.scrollHeight <= innerHeight - 24,
+              labelsFit: [...document.querySelectorAll(".documentation-flow li > span, .eval-bar-row strong")]
+                .filter((node) => node.clientWidth).every((node) => node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1) };
+          });
+          assert(typography.body === "16px" && Math.abs(parseFloat(typography.lineHeight) - 26.4) < .1 && typography.measure !== "none", "Documentation body typography incorrect");
+          assert(typography.example === "14px" && typography.mono.includes("IBM Plex Mono") && typography.contents === "15px", "Documentation secondary typography incorrect");
+          assert(typography.sectionHeading === "29px" && typography.contentsHeading === "13px", "Documentation headings changed");
+          assert(typography.labelsFit && (width < 900 || typography.tocFits), "Diagram labels or sticky contents no longer fit");
         }
+        if (path === "/workspace") assert(await tab.locator(".workspace-empty > .muted").first().evaluate((node) => getComputedStyle(node).fontSize === "14px"), "Workspace body text changed");
         if (path === "/evaluations" && width < 900) {
           const region = tab.getByRole("region", { name: "Retrieval results", exact: true });
           await tab.waitForFunction(() => [...document.querySelectorAll(".eval-table-scroll")].find((node) => node.getAttribute("aria-label") === "Retrieval results").parentElement.dataset.overflow === "true");
