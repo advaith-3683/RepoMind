@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-11-25T05:03:57.616165+00:00",
+  "timestamp": "2026-11-25T14:17:05.126256+00:00",
   "meta": {
-    "title": "Run 5: vector retrieval, fast mode, 60-line chunk preview",
+    "title": "Run 6: vector retrieval, fast mode, 60-line chunk preview (repeat of run 5)",
     "repo": "advaith-3683/smartspendAI",
     "golden_set": {
       "questions": 32,
@@ -14,12 +14,13 @@
     "search_preview_lines": 60,
     "retrieval_mode": "vector",
     "branch_merged": "main (default since this run)",
-    "runs_per_configuration": 1,
+    "runs_per_configuration": 2,
     "limits": [
-      "One repository and one run per configuration; differences of a few questions are noise.",
+      "One repository; differences of a few questions between configurations are noise.",
+      "Run 5 and run 6 used the same configuration (60-line preview) and both answered 25 of 27; run 4 (30-line preview) answered 23 once.",
+      "q10 and q26 returned \"not found\" in both full runs but answered when run alone in small diagnostic runs. The cause is not identified.",
       "Groundedness is a keyword-overlap proxy, not a fact check.",
-      "Cost shows $0 because model prices are not configured (free-tier models).",
-      "Run 5 differs from run 4 only by the 60-line preview; its 2-question gain is within run-to-run variation."
+      "Cost shows $0 because model prices are not configured (free-tier models)."
     ]
   },
   "redteam": {
@@ -82,7 +83,7 @@
     "n_should_decline": 5,
     "answer_rate": 0.9259259259259259,
     "file_recall": 0.8518518518518519,
-    "keyword_hit": 0.8703703703703703,
+    "keyword_hit": 0.8888888888888888,
     "groundedness": 1.0,
     "decline_accuracy": 1.0,
     "error_rate": 0.0,
@@ -92,10 +93,10 @@
     ],
     "answer_rate_ex_errors": 0.9259259259259259,
     "decline_accuracy_ex_errors": 1.0,
-    "latency_p50_ms": 8912,
-    "latency_p95_ms": 10736,
+    "latency_p50_ms": 9337,
+    "latency_p95_ms": 10286,
     "avg_cost_usd": 0.0,
-    "avg_tokens": 2836.78125,
+    "avg_tokens": 2835.65625,
     "aborted": false,
     "n_planned": 32,
     "rows": [
@@ -104,224 +105,224 @@
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 11409
+        "latency_ms": 11611
       },
       {
         "id": "q02",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8361
+        "latency_ms": 8842
       },
       {
         "id": "q03",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8756
+        "latency_ms": 9040
       },
       {
         "id": "q04",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8727
+        "latency_ms": 8868
       },
       {
         "id": "q05",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 9931
+        "latency_ms": 9097
       },
       {
         "id": "q06",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8860
+        "latency_ms": 9178
       },
       {
         "id": "q07",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 9121
+        "latency_ms": 9547
       },
       {
         "id": "q08",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8636
+        "latency_ms": 8927
       },
       {
         "id": "q09",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 9252
+        "latency_ms": 9553
       },
       {
         "id": "q10",
         "status": "completed",
         "found": false,
         "clarify": null,
-        "latency_ms": 8645
+        "latency_ms": 8919
       },
       {
         "id": "q11",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8912
+        "latency_ms": 9295
       },
       {
         "id": "q12",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8776
+        "latency_ms": 9045
       },
       {
         "id": "q13",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 9498
+        "latency_ms": 10286
       },
       {
         "id": "q14",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8401
+        "latency_ms": 8883
       },
       {
         "id": "q15",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 9133
+        "latency_ms": 9337
       },
       {
         "id": "q16",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8893
+        "latency_ms": 9602
       },
       {
         "id": "q17",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 10736
+        "latency_ms": 12523
       },
       {
         "id": "q18",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8915
+        "latency_ms": 9464
       },
       {
         "id": "q19",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8182
+        "latency_ms": 8717
       },
       {
         "id": "q20",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8293
+        "latency_ms": 8740
       },
       {
         "id": "q21",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 10927
+        "latency_ms": 9299
       },
       {
         "id": "q22",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8384
+        "latency_ms": 9576
       },
       {
         "id": "q23",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8950
+        "latency_ms": 9306
       },
       {
         "id": "q24",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 10130
+        "latency_ms": 9454
       },
       {
         "id": "q25",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 9410
+        "latency_ms": 9622
       },
       {
         "id": "q26",
         "status": "completed",
         "found": false,
         "clarify": null,
-        "latency_ms": 9969
+        "latency_ms": 8791
       },
       {
         "id": "q27",
         "status": "completed",
         "found": true,
         "clarify": null,
-        "latency_ms": 8495
+        "latency_ms": 9521
       },
       {
         "id": "d1",
         "status": "completed",
         "found": false,
         "clarify": null,
-        "latency_ms": 8995
+        "latency_ms": 9445
       },
       {
         "id": "d2",
         "status": "completed",
         "found": false,
         "clarify": null,
-        "latency_ms": 8508
+        "latency_ms": 9922
       },
       {
         "id": "d3",
         "status": "completed",
         "found": false,
         "clarify": null,
-        "latency_ms": 8616
+        "latency_ms": 9850
       },
       {
         "id": "d4",
         "status": "completed",
         "found": false,
         "clarify": null,
-        "latency_ms": 8913
+        "latency_ms": 8733
       },
       {
         "id": "d5",
         "status": "completed",
         "found": false,
         "clarify": null,
-        "latency_ms": 8603
+        "latency_ms": 9719
       }
     ]
   },
@@ -382,6 +383,17 @@
       "file_recall": 0.85,
       "keyword_hit": 0.87,
       "valid": true
+    },
+    {
+      "run": 6,
+      "date": "2026-11-25",
+      "change": "repeat of run 5 (same configuration)",
+      "answered": "25/27",
+      "declined": "5/5",
+      "errors": 0,
+      "file_recall": 0.85,
+      "keyword_hit": 0.89,
+      "valid": true
     }
   ],
   "diagnostics": {
@@ -393,7 +405,16 @@
         "q27"
       ],
       "answered": "4/4",
-      "note": "Picked because all four failed at 30 lines. In the later full 60-line run q05 and q27 answered but q10 and q26 did not, so single-question outcomes vary between runs."
+      "note": "Picked because all four failed at 30 lines. In both later full 60-line runs (5 and 6) q05 and q27 answered but q10 and q26 did not."
+    },
+    "preview_lines_60_subset_2": {
+      "questions": [
+        "q05",
+        "q10",
+        "q26"
+      ],
+      "answered": "3/3",
+      "note": "Run after run 5 with the filter q05,q10,q26,q27 and limit 3, so q27 was not run. All three answered; the full run 6 then failed q10 and q26 again."
     }
   }
 }

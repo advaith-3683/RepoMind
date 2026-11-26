@@ -48,4 +48,4 @@ def test_published_file_matches_current_defaults():
     s = Settings(_env_file=None)
     assert d["meta"]["search_preview_lines"] == s.search_preview_lines == 60
     assert d["meta"]["fast_top_k"] == s.fast_top_k == 5 and d["meta"]["retrieval_mode"] == s.retrieval_mode
-    assert d["history"][-1]["run"] == 5 and d["history"][-1]["valid"] is True
+    assert d["history"][-1]["run"] == 6 and d["history"][-1]["valid"] is True
