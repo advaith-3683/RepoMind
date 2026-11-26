@@ -16,7 +16,7 @@ cd backend
 pip install -r requirements.txt
 cp ../.env.example .env          # fill in GEMINI_API_KEY (embeddings), LLM_API_KEY (Groq) and DATABASE_URL
 # run backend/sql/schema.sql once in the Supabase SQL editor
-python -m pytest -q              # 318 tests, no network or DB needed
+python -m pytest -q              # 319 tests (317 pass, 2 skip on Windows), no network or DB needed
 uvicorn app.main:app --reload    # http://localhost:8000  (API + frontend)
 python -m app.evals.run --redteam
 ```

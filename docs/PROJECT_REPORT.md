@@ -128,7 +128,7 @@ See `docs/API_CONTRACT.md` (authoritative). Summary: `POST /repos`, `GET /repos[
 
 ## 8. Status
 **Verified (actually run):**
-- [x] 318 backend pytest tests pass (1 skipped on Windows: symlink test) and 140 frontend Node tests pass (guardrails, sandbox incl. symlink escape, secret redaction, budgets, rate limiter, citation verification, chunkers, RRF, query-term/tsquery building, rerank, eval metrics, URL validation, agent loop with a scripted fake LLM covering happy path / bad citations / budgets / invalid JSON / injection / traversal / HITL proposals, HITL state machine, SSE framing, error-code→HTTP mapping; **OpenAI-compatible client against a mock HTTP transport** (retries, Retry-After, 429/5xx/4xx), fallback chain, LLM + embedding disk cache incl. replay mode, provider factory, **fast mode** end to end with a scripted LLM)
+- [x] 319 backend pytest tests (317 passed, 0 failed on the last Windows run, 2026-11-26; 2 skipped by design: the opt-in Linux-image clone test and the symlink test, which needs elevated rights on Windows) and 140 frontend Node tests pass (guardrails, sandbox incl. symlink escape, secret redaction, budgets, rate limiter, citation verification, chunkers, RRF, query-term/tsquery building, rerank, eval metrics, URL validation, agent loop with a scripted fake LLM covering happy path / bad citations / budgets / invalid JSON / injection / traversal / HITL proposals, HITL state machine, SSE framing, error-code→HTTP mapping; **OpenAI-compatible client against a mock HTTP transport** (retries, Retry-After, 429/5xx/4xx), fallback chain, LLM + embedding disk cache incl. replay mode, provider factory, **fast mode** end to end with a scripted LLM)
 - [x] Offline red-team eval: 12/12 attacks blocked, 0/8 false positives (on this small hand-written set; see risks)
 - [x] Server boots; `/health`, static `/`, bad-URL and injection rejections verified with curl
 - [x] Real `git clone` of a public repo and chunking works (156 files → 1,548 chunks, no DB needed)
@@ -208,7 +208,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp ../.env.example .env                    # fill GEMINI_API_KEY, DATABASE_URL
 # Supabase SQL editor: paste & run backend/sql/schema.sql
-python -m pytest -q                        # expect 318 passed, 1 skipped on Windows
+python -m pytest -q                        # expect 317 passed, 2 skipped on Windows (319 collected)
 uvicorn app.main:app --reload              # http://localhost:8000
 python -m app.evals.run --redteam          # offline
 python -m app.evals.run --retrieval --golden app/evals/golden_set.json
