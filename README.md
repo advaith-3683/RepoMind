@@ -4,13 +4,19 @@ Agentic RAG assistant for codebases (Gemini embeddings, Groq answers, free-tier 
 
 **Full details, architecture, status and next steps: [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md)**
 
+## Live app and pages
+- App: https://repomind-gt4x.onrender.com (sign in with GitHub to ask questions; the free Render instance sleeps, so the first load can take about 30 seconds)
+- `/evaluations`: measured results (public, no login). On a 32-question golden set for one repo: 25 of 27 answerable questions answered in two separate runs, 5 of 5 out-of-scope questions declined, 0 errors, 12 of 12 red-team attacks blocked. One repository and one model; the limits are listed on the page and in [`docs/EVALS.md`](docs/EVALS.md)
+- `/documentation`: how Fast and Agent mode work, how citations are verified, guardrails, and how to read the evaluations
+- Light and dark theme (toggle in the header); the current run is restored after a page reload
+
 ## Quick start
 ```bash
 cd backend
 pip install -r requirements.txt
 cp ../.env.example .env          # fill in GEMINI_API_KEY (embeddings), LLM_API_KEY (Groq) and DATABASE_URL
 # run backend/sql/schema.sql once in the Supabase SQL editor
-python -m pytest -q              # 107 tests, no network or DB needed
+python -m pytest -q              # 319 tests (317 pass, 2 skip on Windows), no network or DB needed
 uvicorn app.main:app --reload    # http://localhost:8000  (API + frontend)
 python -m app.evals.run --redteam
 ```

@@ -82,6 +82,7 @@ one full fast-mode run on a fresh quota day, no fallback key, `limit 3` first.
 | 3, 2026-11-24 | vector default, 30 preview lines | 18 (67%) | 5 | 0 | 0.61 | 0.65 |
 | 4, 2026-11-25 | + citation normalisation, stronger citation prompt, absence rules | 23 (85%) | 5 | 0 | 0.80 | 0.80 |
 | 5, 2026-11-25 | same as run 4 + 60 preview lines (now the default) | 25 (93%) | 5 | 0 | 0.85 | 0.87 |
+| 6, 2026-11-25 | repeat of run 5, no code or setting changes | 25 (93%) | 5 | 0 | 0.85 | 0.89 |
 
 What run 3 → run 4 shows: in run 3, 5 questions ended in `needs_clarification` (answer rejected because it had no verifiable
 `[path:start-end]` citation; the logs showed correct prose without brackets, fullwidth brackets and non-breaking hyphens). In run 4
@@ -98,7 +99,21 @@ wording, absence rules), so the gain cannot be attributed to any one of them.
 Same code as run 4, `SEARCH_PREVIEW_LINES=60`: 25 of 27 answered (93%), 5/5 declined, 0 errors, file recall 0.85, keyword hit 0.87,
 p95 latency 10.7 s (16.0 s in run 4), average 2,837 tokens per question (+9% vs run 4's 2,600).
 q05 and q27 answer now; q10 and q26 still say "not found". Those two had answered in the earlier 4-question diagnostic at
-60 lines, so single-question outcomes vary from run to run and the 2-question gain over run 4 is within noise. The case for 60 rests
-on three consistent observations (6 of 9 failed questions answering in the first diagnostic, 4 of 4 in the second, +2 on the full set)
-plus a small token cost, not on a significance test. Remaining known failures: q10 and q26 ("not found" despite the right files
+60 lines. The case for 60 rests on three consistent observations (6 of 9 failed questions answering in the first diagnostic,
+4 of 4 in the second, +2 on the full set) plus a small token cost, not on a significance test (run 6 below repeats the full set). Remaining known failures: q10 and q26 ("not found" despite the right files
 being retrieved) and q20 (answered with the wrong file; vector top-5 missed `models.py`).
+
+## Run 6 (2026-11-25): repeat of run 5
+Same code and settings as run 5 (vector retrieval, fast mode, `FAST_TOP_K=5`, `SEARCH_PREVIEW_LINES=60`, one model, no fallback), run to
+check whether run 5 was a lucky draw: 25 of 27 answered (93%), 5/5 declined, 0 errors, file recall 0.85, keyword hit 0.89,
+p95 latency 10.3 s, average 2,836 tokens per question. Red-team (12/12 blocked, 0/8 false positives) and retrieval are unchanged.
+The same two questions failed as in run 5: **q10 and q26 returned "not found"** in both full runs.
+
+A separate small diagnostic (filter `q05,q10,q26,q27` with a limit of 3, so q27 was not run) answered q05, q10 and q26. So these two
+questions answer when run in a 3 to 4 question run and fail in both full 32-question runs. That is not what random run-to-run variation
+would most simply predict, and the cause is not identified. The harness asks each question independently, so shared conversation
+state in the harness is not the explanation. Not investigated further: it would need a full-set run with the questions reordered, or
+logging the retrieved evidence and the model's reasoning for q10 and q26 in a full run.
+
+What this supports: 25/27 is reproducible for this configuration (two runs, same count, same two misses). What it does not support:
+any claim beyond this one repository, or that 60 lines beats 30 lines by more than the 2 questions seen (run 4 is a single run).

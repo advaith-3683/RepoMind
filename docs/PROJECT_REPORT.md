@@ -128,7 +128,7 @@ See `docs/API_CONTRACT.md` (authoritative). Summary: `POST /repos`, `GET /repos[
 
 ## 8. Status
 **Verified (actually run):**
-- [x] 140 pytest tests pass (guardrails, sandbox incl. symlink escape, secret redaction, budgets, rate limiter, citation verification, chunkers, RRF, query-term/tsquery building, rerank, eval metrics, URL validation, agent loop with a scripted fake LLM covering happy path / bad citations / budgets / invalid JSON / injection / traversal / HITL proposals, HITL state machine, SSE framing, error-code→HTTP mapping; **OpenAI-compatible client against a mock HTTP transport** (retries, Retry-After, 429/5xx/4xx), fallback chain, LLM + embedding disk cache incl. replay mode, provider factory, **fast mode** end to end with a scripted LLM)
+- [x] 319 backend pytest tests (317 passed, 0 failed on the last Windows run, 2026-11-26; 2 skipped by design: the opt-in Linux-image clone test and the symlink test, which needs elevated rights on Windows) and 140 frontend Node tests pass (guardrails, sandbox incl. symlink escape, secret redaction, budgets, rate limiter, citation verification, chunkers, RRF, query-term/tsquery building, rerank, eval metrics, URL validation, agent loop with a scripted fake LLM covering happy path / bad citations / budgets / invalid JSON / injection / traversal / HITL proposals, HITL state machine, SSE framing, error-code→HTTP mapping; **OpenAI-compatible client against a mock HTTP transport** (retries, Retry-After, 429/5xx/4xx), fallback chain, LLM + embedding disk cache incl. replay mode, provider factory, **fast mode** end to end with a scripted LLM)
 - [x] Offline red-team eval: 12/12 attacks blocked, 0/8 false positives (on this small hand-written set; see risks)
 - [x] Server boots; `/health`, static `/`, bad-URL and injection rejections verified with curl
 - [x] Real `git clone` of a public repo and chunking works (156 files → 1,548 chunks, no DB needed)
@@ -139,7 +139,8 @@ See `docs/API_CONTRACT.md` (authoritative). Summary: `POST /repos`, `GET /repos[
 - [ ] All SQL in `store.py` and `retrieval/hybrid.py`, `schema.sql` (never run against Postgres)
 - [ ] Full ingestion → embed → insert pipeline; hybrid search ranking quality
 - [ ] End-to-end `/ask` with a real LLM (the loop is tested with a fake LLM, not Gemini)
-- [x] Eval runners (`--retrieval`, `--sweep`, `--agent`) run live via GitHub Actions; one valid baseline exists, a clean end-to-end re-run on the vector default is pending (run 2 was invalidated by Groq rate limits)
+- [x] Eval runners (`--retrieval`, `--sweep`, `--agent`) run live via GitHub Actions. Five valid full runs exist (run 2 was invalidated by Groq rate limits); the final configuration (vector, fast mode, 60-line preview) was run twice and answered 25/27 both times, 5/5 declined, 0 errors. See `docs/EVALS.md`
+- [x] **Frontend (built with Codex, plain HTML/CSS/JS, 140 Node tests):** workspace with Fast/Agent modes, streamed trace and verified citations; approve/edit/reject and publish as PR or issue; GitHub sign-in; public **Evaluations** and **Documentation** pages (served at `/evaluations` and `/documentation`, no login; Evaluations reads `GET /evals/latest` and shows stat cards, run-history and retrieval charts, tables and the stated limits); light/dark theme toggle (saved choice, else system setting); the active run is restored after a page reload from `/history` and `/traces/{id}` (only the query id is kept in `sessionStorage`) and a New chat action clears it. Deployed on Render
 - [ ] Dockerfile build
 
 **Not built yet:** LLM-as-judge faithfulness, tree-sitter chunking, LLM reranker, LLM-as-judge; fork-based PRs for repos the user can't write to. Built but **unverified live**: Supabase Auth + GitHub provider, the GitHub publish flow (tested only against a mock GitHub), the new `schema.sql` migrations.
@@ -185,7 +186,7 @@ backend" in FRONTEND_BRIEF.md instead of guessing.
 - **PR flow only for writable repos.** Others get `github_no_permission`; use the issue kind. Fork flow not built.
 - **Injection regex has false positives/negatives.** A user asking *about* the phrase "ignore previous instructions" gets blocked; novel phrasings can slip through. It is one layer among several (delimiting, neutralizing, tool sandbox, citation check), not the only defence. Don't claim it is complete; report the red-team numbers honestly and keep growing the set.
 - **Groundedness is a heuristic** (identifier overlap), not a faithfulness judge. Say so in interviews; the LLM-judge upgrade is listed in Next steps.
-- **Eval config.** Results apply to `FAST_TOP_K=5` and `SEARCH_PREVIEW_LINES=60` (run 5); the deployed app must use the same value (an earlier Render setting of 3 is not what was measured).
+- **Eval config.** Results apply to `FAST_TOP_K=5` and `SEARCH_PREVIEW_LINES=60` (runs 5 and 6); the deployed app must use the same value (an earlier Render setting of 3 is not what was measured).
 - **Evidence granularity.** Search results only count as evidence for the lines actually shown to the model (first `SEARCH_PREVIEW_LINES` = 60 lines of a chunk; chunks can be up to 120 lines).
 - **Python-only precision.** AST chunking is exact for Python; JS/TS/Go/Rust are heuristic; Java/C/C++ fall back to windows.
 - **Tests don't cover** anything needing Gemini or Postgres (see section 8).
@@ -193,7 +194,7 @@ backend" in FRONTEND_BRIEF.md instead of guessing.
 ## 12. Resume framing (fill in X/Y only after measuring; never invent numbers)
 > **RepoMind** · Agentic RAG codebase assistant · FastAPI, Supabase (pgvector), Gemini, vanilla JS
 > - Built a retrieval layer (pgvector + Postgres full-text with weighted reciprocal-rank fusion) and chose the default by ablation on a tune/held-out split of a 32-question golden set (27 answerable, 5 should-decline) on one repo: vector-only matched the best hybrid on held-out recall@5 (0.92), so I shipped the simpler option
-> - Debugged a drop in answered questions (85% → 67%) to answers rejected for non-ASCII bracket/hyphen citation formatting and missing citations, fixed by normalising citation characters, tightening the prompt and showing the model 60 instead of 30 lines per retrieved chunk; the final full run answered 93% (25/27) with 5/5 out-of-scope questions declined and 0 errors (one model, one repo, single run; the 2-question margin over the previous run is within noise)
+> - Debugged a drop in answered questions (85% → 67%) to answers rejected for non-ASCII bracket/hyphen citation formatting and missing citations, fixed by normalising citation characters, tightening the prompt and showing the model 60 instead of 30 lines per retrieved chunk; the final configuration answered 93% (25/27) in two separate full runs, with 5/5 out-of-scope questions declined and 0 errors (one model, one repo; the 2-question margin over the 30-line run is a single comparison and within noise)
 > - Implemented a hand-written tool-using agent loop with sandboxed read-only tools and verified `file:line` citations (invalid citations are retried or stripped; low-evidence answers escalate to the user)
 > - Added layered guardrails (prompt-injection and indirect-injection defence, secret redaction, step/token/time budgets, rate limiting) and a human-in-the-loop approval gate for proposed patches; blocked 12/12 adversarial prompts with 0/8 false positives in a red-team suite
 > - Created an automated eval harness tracking recall@k, MRR, groundedness, p50/p95 latency and cost per query; 300+ automated tests
@@ -207,7 +208,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp ../.env.example .env                    # fill GEMINI_API_KEY, DATABASE_URL
 # Supabase SQL editor: paste & run backend/sql/schema.sql
-python -m pytest -q                        # expect 140 passed
+python -m pytest -q                        # expect 317 passed, 2 skipped on Windows (319 collected)
 uvicorn app.main:app --reload              # http://localhost:8000
 python -m app.evals.run --redteam          # offline
 python -m app.evals.run --retrieval --golden app/evals/golden_set.json
